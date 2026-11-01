@@ -26,12 +26,13 @@ const hasTemp = f => f.temperatureC !== null && f.temperatureC !== undefined;
 const place = h => ({ name: h.name, lat: Number(h.lat), long: Number(h.long) });
 const inRange = (c, [minC, maxC]) => (c === null ? null : c >= minC && c <= maxC);
 
-/** Route to draw: the stored openrouteservice geometry when keyed, else pickup -> detour points -> drop. */
-function routeOf(t, from, to, closures) {
+/** Route to draw: the stored openrouteservice geometry when keyed, else the roads from OSRM, else pickup -> detour points -> drop. */
+async function routeOf(t, from, to, closures) {
   if (config.orsKey && t.routeJson) { try { return JSON.parse(t.routeJson); } catch { /* draw the fallback */ } }
   const r = routing.fallbackRoute(from, to, closures);
+  const road = r.open && !r.detour ? await routing.roadPoints(from, to) : null; // OSRM can't avoid closures: detours stay straight
   return {
-    points: [from, ...(r.via || []), to].map(p => [Number(p.lat), Number(p.long)]),
+    points: road || [from, ...(r.via || []), to].map(p => [Number(p.lat), Number(p.long)]),
     steps: [{ instruction: msg('courier.step.pickup', { place: from.name }) }, ...(r.detour || !r.open ? [{ instruction: r.note }] : []), { instruction: msg('courier.step.drop', { place: to.name }) }],
   };
 }
@@ -82,7 +83,7 @@ async function leg(t, side, neededBy) {
     transferId: t.ID, status: t.status, drug: { name: drugName(drug) }, qty: t.qty, steps,
     partner: partner ? { name: partner.name } : null, riderName: rider?.riderName || null, riderPhone: summary ? null : rider?.riderPhone || null,
     origin: place(from), destination: place(to),
-    route: summary ? [] : routeOf(t, from, to, closures).points,
+    route: summary ? [] : (await routeOf(t, from, to, closures)).points,
     position: summary || !last ? null : { lat: Number(last.lat), long: Number(last.long), at: iso(last.loggedAt), accuracyM: last.accuracyM == null ? null : Number(last.accuracyM) },
     trail: summary ? [] : fixes.slice(-TRAIL).map(f => [Number(f.lat), Number(f.long)]),
     eta, etaText: etaText(eta), remainingKm: moving ? remainingKm(last || from, to, closures) : null,
@@ -137,7 +138,8 @@ async function refresh(t, fix, prev, range) {
     if (r.open) {
       // route() adds the hand-over time at pickup; a courier on the road only has the drive left
       eta = new Date(Date.now() + Math.max(0, r.etaMin - config.handlingMin) * 60000).toISOString();
-      await UPDATE(T).set({ eta, routeJson: r.points ? JSON.stringify({ points: r.points, steps: r.steps }) : null }).where({ ID: t.ID });
+      // only the ETA: the stored route stays put so the map and the courier follow one stable line (replan changes it for closures)
+      await UPDATE(T).set({ eta }).where({ ID: t.ID });
     }
   }
   const lastTemp = hasTemp(fix) ? fix : await SELECT.one.from('medilink.ConditionLogs').columns('temperatureC').where({ transfer_ID: t.ID, temperatureC: { '!=': null } }).orderBy('loggedAt desc');

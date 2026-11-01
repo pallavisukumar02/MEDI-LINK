@@ -120,6 +120,30 @@ function decodePolyline(s) {
   return out;
 }
 
+const roadCache = new Map(); // "lat,long>lat,long" -> { p: Promise<points|null>, at, ok }
+const ROAD_RETRY_MS = 10 * 60000;
+async function fetchRoad(from, to) {
+  try {
+    const res = await http.request(`${config.osrmUrl}/route/v1/driving/${from.long},${from.lat};${to.long},${to.lat}?overview=full&geometries=polyline`, { timeoutMs: 5000 });
+    const g = res.status === 200 ? res.json?.routes?.[0]?.geometry : null;
+    return typeof g === 'string' ? decodePolyline(g) : null;
+  } catch { return null; } // offline or slow: the map draws the straight line
+}
+/**
+ * Road geometry from pickup to drop for the live map and the simulated rider, from OSRM (no key; config.osrmUrl).
+ * Cached per hospital pair (a failure is retried after 10 min). Drawing only: distances and ETAs stay as they are.
+ */
+function roadPoints(from, to) {
+  if (!config.osrmUrl) return Promise.resolve(null);
+  from = pt(from); to = pt(to);
+  const key = `${from.lat},${from.long}>${to.lat},${to.long}`, hit = roadCache.get(key);
+  if (hit && (hit.ok || Date.now() - hit.at < ROAD_RETRY_MS)) return hit.p;
+  const entry = { p: fetchRoad(from, to), at: Date.now(), ok: false };
+  entry.p.then(points => { entry.ok = !!points; });
+  roadCache.set(key, entry);
+  return entry.p;
+}
+
 async function route(from, to, closures = [], straightKm) {
   if (config.orsKey) {
     try { return await orsRoute(from, to, closures); } catch (e) { /* fall through to haversine */ }
@@ -128,4 +152,4 @@ async function route(from, to, closures = [], straightKm) {
 }
 
 const round = n => Math.round(n * 100) / 100;
-module.exports = { haversineKm, route, fallbackRoute, intersects, inside, detourWaypoint, etaMinutes, decodePolyline };
+module.exports = { haversineKm, route, fallbackRoute, roadPoints, intersects, inside, detourWaypoint, etaMinutes, decodePolyline };

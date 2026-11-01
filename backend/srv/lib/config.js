@@ -38,6 +38,8 @@ function load(env = process.env) {
     matcherToken: str(env.MATCHER_TOKEN, ''),
     orsKey: str(env.ORS_API_KEY, ''),
     orsBaseUrl: str(env.ORS_BASE_URL, 'https://api.openrouteservice.org'),
+    // road geometry for the live map without a key (OSRM's public demo server); OSRM_URL= (empty) turns it off
+    osrmUrl: env.OSRM_URL !== undefined ? String(env.OSRM_URL).trim() : env.NODE_ENV === 'test' ? '' : 'https://router.project-osrm.org',
     openMeteoUrl: str(env.OPEN_METEO_BASE_URL, 'https://api.open-meteo.com/v1/forecast'),
     weatherCheckEnabled: bool(env.WEATHER_CHECK_ENABLED, true),
     weatherCloseMmPerH: num(env.WEATHER_CLOSE_MM_PER_H, 20),

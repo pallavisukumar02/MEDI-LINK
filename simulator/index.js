@@ -50,6 +50,7 @@ async function call(cfg, method, p, body, auth = cfg.auth) {
 const shipmentOf = (transferId, j) => ({
   ID: transferId, storageClass: j.storageClass, minC: j.temperatureRange.minC, maxC: j.temperatureRange.maxC, pickedUpAt: j.pickedUpAt, etaMin: j.etaMin,
   fromLat: j.pickup.lat, fromLong: j.pickup.long, toLat: j.drop.lat, toLong: j.drop.long, via: (j.route?.points || []).slice(1, -1).map(([lat, long]) => ({ lat, long })),
+  lastLat: j.position?.lat ?? null, lastLong: j.position?.long ?? null,
 });
 
 /** One tick: list the links, pick up what nobody scanned for a minute, post one reading per moving delivery. */

@@ -241,7 +241,7 @@
 @media (prefers-reduced-motion:reduce){.vz-wave,.vz-hb-ring,.vz-ep,.ml-ants,.ml-rider .ring,.ml-rider .pulse{animation:none!important}}
 
 /* ---------------------------------------------------------------- live map (app map well only; courier keeps app.css) */
-.ml-map .leaflet-tile-pane{filter:grayscale(1) sepia(.15) contrast(.92) brightness(1.04)}
+.ml-map .leaflet-tile-pane{filter:saturate(.45) brightness(1.06) contrast(.9)} /* softer OSM colours, close to the app's pastels */
 .ml-map.leaflet-container{background:#F3F1EE;font:12px var(--f-mono)}
 .ml-map .leaflet-control-attribution{background:rgba(255,255,255,.7);border-radius:999px 0 0 0;padding:0 8px;font:10px var(--f-mono)}
 .ml-map .leaflet-bar{border:0;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgba(38,20,13,.1),0 6px 14px rgba(38,20,13,.1)}

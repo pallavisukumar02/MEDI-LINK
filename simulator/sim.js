@@ -26,6 +26,20 @@ function interpolate(path, f) {
 }
 const round6 = n => Math.round(n * 1e6) / 1e6;
 
+/** Fraction (0..1) along the polyline of the point nearest pos: where a restarted simulator picks the rider up again. */
+function fractionAt(path, pos) {
+  const pts = path.map(p => ({ lat: Number(p.lat), long: Number(p.long) }));
+  let total = 0, best = Infinity, at = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], len = Math.hypot(b.lat - a.lat, b.long - a.long);
+    const t = len ? Math.max(0, Math.min(1, ((pos.lat - a.lat) * (b.lat - a.lat) + (pos.long - a.long) * (b.long - a.long)) / len ** 2)) : 0;
+    const d = Math.hypot(a.lat + t * (b.lat - a.lat) - pos.lat, a.long + t * (b.long - a.long) - pos.long);
+    if (d < best) { best = d; at = total + t * len; }
+    total += len;
+  }
+  return total ? at / total : 0;
+}
+
 function pathOf(s) {
   let via = [];
   try { via = typeof s.via === 'string' ? JSON.parse(s.via || '[]') : (s.via || []); } catch { via = []; }
@@ -66,7 +80,9 @@ function createPlanner(opts = {}) {
         const eta = Math.max(5, Number(s.etaMin) || 30) * 60000;
         if (!progress.has(s.ID)) {
           const started = s.pickedUpAt ? Date.parse(s.pickedUpAt) : o.now();
-          progress.set(s.ID, Math.min(0.5, Math.max(0.02, (o.now() - started) / eta)));
+          // carry on from the last reported position (a restart must not send the rider back); a new delivery starts early on
+          const resume = s.lastLat != null ? Math.min(0.97, fractionAt(pathOf(s), { lat: s.lastLat, long: s.lastLong })) : null;
+          progress.set(s.ID, resume ?? Math.min(0.5, Math.max(0.02, (o.now() - started) / eta)));
         } else {
           progress.set(s.ID, Math.min(0.97, progress.get(s.ID) + (o.speedup * o.intervalSec * 1000) / eta));
         }
@@ -84,4 +100,4 @@ function createPlanner(opts = {}) {
   };
 }
 
-module.exports = { interpolate, pathOf, normalTemp, excursionTemp, pickExcursionTarget, createPlanner };
+module.exports = { interpolate, fractionAt, pathOf, normalTemp, excursionTemp, pickExcursionTarget, createPlanner };

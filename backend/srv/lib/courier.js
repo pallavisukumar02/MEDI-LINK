@@ -168,6 +168,7 @@ async function job({ link, t, readOnly }) {
     SELECT.one.from('medilink.Drugs').where({ ID: t.drug_ID }), SELECT.one.from('medilink.DeliveryPartners').columns('name').where({ ID: t.partner_ID }),
     SELECT.from('medilink.RoadClosures').where({ active: true }), SELECT.from('medilink.TransferLots').columns('batchNo').where({ transfer_ID: t.ID }),
   ]);
+  const last = t.status === 'IN_TRANSIT' ? await SELECT.one.from('medilink.ConditionLogs').columns('lat', 'long').where({ transfer_ID: t.ID, lat: { '!=': null } }).orderBy('loggedAt desc') : null;
   const [minC, maxC] = rangeFor(drug.storageClass);
   // no batch numbers for the courier: the pickup scan has to prove them
   const note = t.transferNote && lots.reduce((n, l) => (l.batchNo ? n.split(l.batchNo).join('••••') : n), t.transferNote);
@@ -178,7 +179,8 @@ async function job({ link, t, readOnly }) {
     pickup: place(from), drop: place(to), handlingNote: note || null, partner: { name: partner?.name || null },
     rider: { name: link.riderName || null, phone: link.riderPhone || null },
     pickedUpAt: t.pickedUpAt || null, eta: t.status === 'IN_TRANSIT' ? t.eta || null : null, etaMin: t.etaMin ?? null, routeNote: t.routeNote || null,
-    route: require('./tracking').routeOf(t, from, to, closures), expiresAt: link.expiresAt,
+    route: await require('./tracking').routeOf(t, from, to, closures), expiresAt: link.expiresAt,
+    position: last ? { lat: Number(last.lat), long: Number(last.long) } : null, // the courier's own last fix
   };
 }
 

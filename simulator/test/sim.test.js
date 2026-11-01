@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
-const { interpolate, pathOf, createPlanner, pickExcursionTarget } = require('../sim');
+const { interpolate, fractionAt, pathOf, createPlanner, pickExcursionTarget } = require('../sim');
 const { tick, config } = require('../index');
 
 const cold = { ID: 'a0000000-cold', loggerId: 'LOG-1', storageClass: 'COLD', minC: 2, maxC: 8, fromLat: 12.97, fromLong: 77.75, toLat: 12.935, toLong: 77.62, etaMin: 60, via: '[]' };
@@ -16,6 +16,14 @@ test('interpolate walks the polyline including detour waypoints', () => {
   assert.deepStrictEqual(interpolate(p, 1), { lat: 12.9299, long: 77.5826 });
   const mid = interpolate(p, 0.3);
   assert.ok(mid.lat > 12.9255 && mid.lat <= 12.94);
+});
+
+test('a restarted simulator carries on from the last fix instead of sending the rider back', () => {
+  const s = { ID: 't1', fromLat: 0, fromLong: 0, toLat: 0, toLong: 10, via: [], etaMin: 30, pickedUpAt: new Date(Date.now() - 3600e3).toISOString(), minC: 2, maxC: 8, storageClass: 'COLD' };
+  assert.ok(Math.abs(fractionAt(pathOf(s), { lat: 0.1, long: 8 }) - 0.8) < 1e-9);
+  const resumed = createPlanner({ excursion: false }).next([{ ...s, lastLat: 0, lastLong: 8 }])[0];
+  assert.deepStrictEqual([resumed.lat, resumed.long], [0, 8]);
+  assert.strictEqual(createPlanner({ excursion: false }).next([s])[0].long, 5); // no fix yet: a new delivery starts at most halfway
 });
 
 test('cold chain is preferred as the excursion target', () => {

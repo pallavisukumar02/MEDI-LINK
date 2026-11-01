@@ -4,7 +4,7 @@
    fix to fix over the time gap between them (no jumps). Used by the journey screen and the courier page; the toned
    tiles, ants and pulse live in css/viz.css (app only), the courier page gets the same marks without the extras.
    OSM tiles: attribution always shown; each tile request sends only our origin as Referer (the tile usage policy
-   requires one, while the page itself is Referrer-Policy: no-referrer). */
+   requires one, while the page itself is Referrer-Policy: no-referrer). css/viz.css softens them to the app's palette. */
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'; // shortcut: OSM's free tiles are for light use; use a tile provider before real traffic
 const TRAIL_MAX = 40;
 const PIN_PATH = 'M18 2C9.2 2 2 9 2 17.6 2 29 18 44 18 44s16-15 16-26.4C34 9 26.8 2 18 2Z'; // the landing's teardrop
@@ -49,8 +49,7 @@ function liveMap(el, opts) {
     if (hd) { hd.classList.remove('none'); hd.style.setProperty('--hd', `${deg.toFixed(1)}deg`); }
   }
   function fit() {
-    const b = routeBase.getBounds();
-    if (rider) b.extend(rider.getLatLng());
+    const b = rider && to ? L.latLngBounds([rider.getLatLng(), to]) : routeBase.getBounds(); // on the road: frame the rider and the drop
     if (b.isValid()) map.fitBounds(b, { padding: [32, 32], maxZoom: 16 }); else map.setView([12.97, 77.59], 12); // Bengaluru
   }
   /** New GPS fix: glide there over the time since the previous fix (clamped), leaving the previous fix on the trail. */
