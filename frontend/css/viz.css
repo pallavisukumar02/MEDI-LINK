@@ -1,0 +1,261 @@
+/* MediLink data visuals (pharmacy metaphors): vials, blister packs, capsules, pill organiser, cold-chain trace, map.
+   Owned by the viz build (js/viz.js, js/livemap.js). Every class is vz-* / ml-* so nothing collides with app.css. */
+.vz-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+
+/* tones (HTML fills; SVG uses attributes) */
+.vt-mint{background:#A9DFC1}.vt-sun{background:#F5D77E}.vt-rose{background:#F4A7B9}.vt-sky{background:#9CCBF0}.vt-violet{background:#CDAAF0}.vt-ink{background:#3B2218}.vt-grey{background:#E1E4E8}
+.vt-hatch{background:repeating-linear-gradient(135deg,#F8C3CF 0 3px,#E08A9E 3px 5px)}
+
+/* status word chip: pastel + ink text + word */
+.vz-word{display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:999px;font:500 10.5px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 0 0 1px rgba(38,20,13,.06)}
+.vw-mint{background:#CFEEDD;color:#23784F}.vw-sun{background:#FAE8B0;color:#7A5200}.vw-rose{background:#F9CCD7;color:#8A2D45}.vw-sky{background:#CDE4F7;color:#2E6FA8}.vw-violet{background:#E6D6F8;color:#6B4FA8}.vw-grey{background:#EEEFF1;color:#6B4333}.vw-ink{background:#3B2218;color:#F2F3F5}
+.vz-none{font:italic 400 15px/1.3 var(--f-serif);color:var(--body)}
+
+/* focus: 2px brown ring, rounded */
+.vz-vial svg:focus-visible,.vz-pocket:focus-visible,.vz-cb-row:focus-visible,.vz-sv:focus-visible,.vz-pc:focus-visible,.vz-trace svg:focus-visible,.vz-lvial svg:focus-visible,.vz-bl-t:focus-visible,.vz-crows li:focus-visible{outline:2px solid #3B2218;outline-offset:3px;border-radius:10px}
+.vz-rc:focus{outline:none}
+.vz-rc:focus-visible .vz-rc-in path:last-child{stroke:#3B2218;stroke-width:2}
+
+/* ---------------------------------------------------------------- tooltip: glass, radius 16 */
+.vz-tip{position:fixed;z-index:80;pointer-events:none;max-width:280px;padding:10px 13px;border-radius:16px;background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);border:1px solid rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(38,20,13,.08),0 12px 28px rgba(38,20,13,.14),inset 0 1px 0 #fff;font:12px/1.5 var(--f-mono);color:var(--body)}
+.vz-tip[hidden]{display:none}
+.vz-tip p{margin:0;display:flex;align-items:baseline;gap:6px}
+.vz-tip .vz-tip-h{font:500 10.5px/1.4 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);margin-bottom:4px}
+.vz-tip b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+.vz-tip i{width:14px;height:7px;border-radius:999px;flex:none;align-self:center;box-shadow:inset 0 0 0 1px rgba(38,20,13,.15)}
+.k-mint{background:#A9DFC1}.k-sun{background:#F5D77E}.k-rose{background:#F4A7B9}.k-sky{background:#9CCBF0}.k-violet{background:#CDAAF0}.k-ink{background:#3B2218}.k-grey{background:#E1E4E8}
+.k-hatch{background:repeating-linear-gradient(135deg,#F8C3CF 0 2px,#E08A9E 2px 4px)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.vz-tip{background:#fff}}
+@media (prefers-reduced-transparency:reduce){.vz-tip{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}}
+
+/* legend */
+.vz-legend{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-wrap:wrap;gap:6px 16px;font:500 10.5px/1.2 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--body)}
+.vz-legend li{display:inline-flex;align-items:center;gap:7px}
+.vz-legend i{width:18px;height:9px;border-radius:999px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 0 0 1px rgba(38,20,13,.12)}
+
+/* ---------------------------------------------------------------- vial gauge */
+.vz-vial{display:inline-block;width:28px;height:64px;flex:none}
+.vz-vial svg{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 2px 3px rgba(38,20,13,.12))}
+.vz-wave{animation:vz-slosh 1.1s linear infinite paused}
+.vz-vial:hover .vz-wave,.vz-vial svg:focus .vz-wave,:focus-within > .vz-vial .vz-wave{animation-play-state:running}
+@keyframes vz-slosh{to{transform:translateX(12px)}}
+.vz-liq{transform-box:fill-box}
+
+/* ---------------------------------------------------------------- blister strip */
+.vz-blister{display:inline-flex;min-width:0}
+.vz-foil{display:inline-flex;align-items:flex-start;gap:6px;padding:7px 9px 4px;border-radius:14px;background:linear-gradient(160deg,#F7F8FA 0%,#E3E6EA 38%,#F4F5F7 55%,#D9DDE2 100%);box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(38,20,13,.06),0 0 0 1px rgba(38,20,13,.08),0 2px 5px rgba(38,20,13,.06)}
+.vz-pocket{display:grid;justify-items:center;gap:2px;cursor:default;border-radius:10px}
+.vz-dome{display:grid;place-items:center;width:38px;height:24px;border-radius:999px;background:radial-gradient(120% 90% at 35% 25%,rgba(255,255,255,.95),rgba(255,255,255,.35) 55%,rgba(225,228,232,.6));box-shadow:inset 0 -2px 3px rgba(38,20,13,.10),inset 0 1px 1px #fff,0 1px 2px rgba(38,20,13,.12);transition:transform .18s ease}
+.vz-dome svg{width:28px;height:14px;display:block}
+.vz-pocket small{font:500 10px/1.3 var(--f-mono);letter-spacing:.04em;color:var(--body);font-variant-numeric:tabular-nums}
+.vz-pocket small.hot{color:#8A2D45}
+.vz-pocket:hover .vz-dome,.vz-pocket:focus-visible .vz-dome{transform:translateY(-2px)}
+.vz-more{align-self:center;font:500 11px/1 var(--f-mono);color:var(--body);padding:0 2px 10px}
+
+/* ---------------------------------------------------------------- capsule ring */
+.vz-ringwrap{min-width:0}
+.vz-ring{position:relative;width:100%;max-width:320px;aspect-ratio:1;margin:0 auto}
+.vz-ring svg{display:block;width:100%;height:100%;overflow:visible}
+.vz-ring svg > circle:first-child{filter:drop-shadow(0 6px 14px rgba(38,20,13,.08))}
+.vz-rc{cursor:default}
+.vz-pickable .vz-rc,.vz-pickable .vz-crows li{cursor:pointer}
+.vz-rc-in{transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
+.vz-rc:hover .vz-rc-in,.vz-rc:focus .vz-rc-in{transform:translateX(7px) scale(1.08)}
+.vz-ring-c{position:absolute;inset:30%;display:grid;place-content:center;text-align:center;pointer-events:none}
+.vz-ring-c b{font:700 clamp(26px,4.2vw,38px)/1 var(--f-head);letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums}
+.vz-ring-c em{font:italic 400 clamp(14px,1.6vw,17px)/1.15 var(--f-serif);color:var(--body);margin-top:6px}
+.vz-crows{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.vz-crows li{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:10px;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.6);box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(38,20,13,.06)}
+.vz-crows li b{font:500 13px/1.2 var(--f-mono);color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vz-crows svg{width:30px;height:14px}
+
+/* ---------------------------------------------------------------- capsule bars */
+.vz-cbwrap{container-type:inline-size}
+/* columns live on the list and rows use subgrid, so every row's bars, spine and values line up */
+.vz-cb{display:grid;grid-template-columns:minmax(120px,30%) 1fr auto auto;gap:2px 12px}
+.vz-cb.div{grid-template-columns:minmax(120px,26%) 3.2em 1fr 2px 1fr auto auto;column-gap:8px}
+.vz-cb-row{grid-column:1 / -1;display:grid;grid-template-columns:subgrid;align-items:center;padding:7px 10px;margin:0 -10px;border-radius:14px;transition:background-color .18s}
+.vz-cb-row:hover,.vz-cb-row:focus-visible{background:rgba(255,255,255,.7)}
+.vz-cb-l{display:grid;min-width:0;line-height:1.3}
+.vz-cb-l b{font:500 13px/1.3 var(--f-mono);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vz-cb-l small{font-size:11.5px;color:var(--body)}
+.vz-cb-t{display:flex;height:16px;border-radius:999px;background:rgba(38,20,13,.045);box-shadow:inset 0 1px 2px rgba(38,20,13,.08);overflow:hidden}
+.vz-cb-t.left{justify-content:flex-end}
+.vz-cb-t.left:empty{background:none;box-shadow:none} /* nothing short: no empty track, the spine alone */
+.vz-cb-fill{display:flex;gap:2px;height:100%;border-radius:999px;overflow:hidden;min-width:8px}
+.vz-cb-fill i{display:block;flex:1 1 0;min-width:4px;height:100%;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(38,20,13,.10);background-image:linear-gradient(180deg,rgba(255,255,255,.7) 0,rgba(255,255,255,.15) 45%,rgba(38,20,13,.06) 100%)}
+.vz-cb-fill i:first-child{border-top-left-radius:999px;border-bottom-left-radius:999px}
+.vz-cb-fill i:last-child{border-top-right-radius:999px;border-bottom-right-radius:999px}
+.vz-cb-fill i.vt-hatch{background:repeating-linear-gradient(135deg,#F8C3CF 0 3px,#E08A9E 3px 5px)}
+.vz-cb-spine{width:2px;height:24px;border-radius:2px;background:rgba(38,20,13,.28)}
+.vz-cb-v,.vz-cb-lv{font:500 13px/1 var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.vz-cb-lv{color:#8A2D45}
+.vz-cb-x{min-width:64px;text-align:right}
+@container (max-width:520px){
+  .vz-cb,.vz-cb.div{grid-template-columns:1fr}
+  .vz-cb-row,.vz-cb.div .vz-cb-row{grid-template-columns:1fr auto;gap:6px 8px}
+  .vz-cb-l{grid-column:1 / -1}
+  .vz-cb.div .vz-cb-row{grid-template-columns:2.6em 1fr 2px 1fr 5.2em}
+  .vz-cb-x{grid-column:1 / -1;text-align:left}
+}
+.vz-dots{display:inline-flex;gap:3px;vertical-align:middle}
+.vz-dots i{width:12px;height:7px;border-radius:999px;background:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(38,20,13,.2)}
+.vz-dots i.on{background:#F4A7B9;box-shadow:inset 0 0 0 1px #c9475f,inset 0 2px 0 rgba(255,255,255,.55)}
+
+/* ---------------------------------------------------------------- expiry shelf */
+.vz-shelfwrap{position:relative;padding-bottom:4px}
+.vz-shelf{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:end;position:relative;z-index:1}
+.vz-sv{display:grid;justify-items:center;gap:4px;border-radius:14px;padding:4px 0}
+.vz-sv b{font:700 15px/1 var(--f-head);letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums}
+.vz-sv svg{width:min(44px,100%);height:auto;display:block;overflow:visible;filter:drop-shadow(0 3px 4px rgba(38,20,13,.12));transition:transform .18s ease}
+.vz-sv:hover svg,.vz-sv:focus-visible svg{transform:translateY(-3px)}
+.vz-sv span{order:3;font:500 10px/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--body);white-space:nowrap;margin-top:14px}
+.vz-plank{position:absolute;left:-6px;right:-6px;bottom:30px;height:12px;border-radius:6px;background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(225,228,232,.75));box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(38,20,13,.07),0 8px 14px rgba(38,20,13,.08)}
+
+/* ---------------------------------------------------------------- pillbox */
+.vz-pbwrap{container-type:inline-size;overflow-x:auto}
+.vz-pb{border-collapse:separate;border-spacing:6px;width:100%;margin:-6px 0}
+.vz-pb thead th{padding:0 0 2px;vertical-align:bottom}
+.vz-lid{display:grid;place-items:center;min-height:38px;padding:6px 8px;border-radius:14px 14px 6px 6px;font:500 10px/1.2 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink);text-align:center;background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(236,238,241,.85));box-shadow:inset 0 1px 0 #fff,inset 0 -3px 0 rgba(201,206,214,.6),0 0 0 1px rgba(38,20,13,.08),0 3px 6px rgba(38,20,13,.06);transition:transform .18s ease}
+.vz-pb thead th.hl .vz-lid{transform:translateY(-2px);box-shadow:inset 0 1px 0 #fff,inset 0 -3px 0 rgba(201,206,214,.6),0 0 0 1.5px #3B2218}
+.vz-pb tbody th{text-align:left;font:500 12.5px/1.25 var(--f-mono);color:var(--ink);white-space:nowrap;padding-right:6px;transition:color .18s}
+.vz-pb tbody tr.hl th{color:#3B2218;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.vz-pc{height:40px;min-width:64px;border-radius:12px;padding:0;text-align:center;cursor:default;box-shadow:inset 0 3px 6px rgba(38,20,13,.12),inset 0 -1px 0 rgba(255,255,255,.9),0 0 0 1px rgba(38,20,13,.05);transition:transform .18s ease,background-color .18s}
+.vz-pcin{display:inline-flex;align-items:center;gap:6px;font:500 13px/1 var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.vz-pcin svg{width:17px;height:9px}
+.vz-pb-h{display:none}
+.vz-pc.c-mint{background:rgba(169,223,193,.42)}
+.vz-pc.c-sun{background:rgba(245,215,126,.55)}
+.vz-pc.c-rose{background:rgba(244,167,185,.55)}
+.vz-pc.c-rose b{color:#8A2D45}
+.vz-pc.c-grey,.vz-pc.c-nil{background:rgba(238,239,241,.6)}
+.vz-pc.c-grey b,.vz-pc.c-nil b{color:#8a6e62}
+.vz-pb td.hl{filter:brightness(1.03)}
+.vz-pb tr.hl td.hl,.vz-pc:focus-visible{transform:translateY(-1px)}
+.vz-pb tr.hl td.hl{box-shadow:inset 0 3px 6px rgba(38,20,13,.12),0 0 0 1.5px #3B2218}
+@container (max-width:560px){
+  .vz-pb,.vz-pb tbody,.vz-pb tr,.vz-pb th,.vz-pb td{display:block}
+  .vz-pb{border-spacing:0;margin:0}
+  .vz-pb thead{display:none}
+  .vz-pb tbody{display:grid;gap:10px}
+  .vz-pb tbody tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;padding:12px;border-radius:20px;background:rgba(255,255,255,.6);box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(38,20,13,.06)}
+  .vz-pb tbody th{grid-column:1 / -1;padding:0 0 2px}
+  .vz-pc{height:auto;padding:7px 8px;display:grid;gap:3px;justify-items:start;text-align:left}
+  .vz-pb-h{display:block;font:500 9.5px/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+}
+
+/* ---------------------------------------------------------------- temperature trace */
+.vz-trace{min-width:0}
+.vz-trace svg{display:block;max-width:100%;overflow:visible;touch-action:pan-y;border-radius:12px}
+.vz-gl{stroke:rgba(38,20,13,.12);stroke-width:1;stroke-dasharray:2 4}
+.vz-ax{font:400 10px var(--f-mono);fill:#8a6e62}
+.vz-band{fill:rgba(169,223,193,.32)}
+.vz-bandl{stroke:#2f9a68;stroke-width:1;stroke-dasharray:3 3;opacity:.55}
+.vz-bandt{font:500 10.5px var(--f-mono);fill:#23784F}
+.vz-tl{fill:none;stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+.vz-xh{opacity:0;pointer-events:none;transition:opacity .12s}
+.vz-xh.on{opacity:1}
+.vz-xh path{stroke:rgba(38,20,13,.4);stroke-width:1;stroke-dasharray:2 3}
+.vz-xh circle{fill:#fff;stroke:#3B2218;stroke-width:2}
+.vz-exc{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.vz-chip{appearance:none;border:0;cursor:pointer;height:28px;padding:0 12px;border-radius:999px;font:500 11.5px/1 var(--f-mono);color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 0 0 1px rgba(38,20,13,.08);transition:transform .18s ease}
+.vz-chip:hover{transform:translateY(-1px)}
+.vz-chip:focus-visible{outline:2px solid #3B2218;outline-offset:3px}
+.vz-chip.hot{background:#F9CCD7;color:#8A2D45}
+.vz-chip.cold{background:#CDE4F7;color:#1F4F7A}
+
+/* ---------------------------------------------------------------- heartbeat */
+.vz-hb{display:inline-flex;align-items:center;gap:10px;min-width:0}
+.vz-hb svg{width:96px;height:24px;flex:none;overflow:visible}
+.vz-hb-line{fill:none;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.vz-hb-line.live{stroke:#2f9a68}
+.vz-hb-line.stale{stroke:#9A6700}
+.vz-hb-line.offline{stroke:#B4BAC4;stroke-dasharray:3 3}
+.vz-hb-t{display:grid;gap:3px;justify-items:start}
+.vz-hb-t small{font:400 11px/1 var(--f-mono);color:var(--body);white-space:nowrap}
+.vz-hb-ring{transform-box:fill-box;transform-origin:center;animation:vz-breathe 2s ease-in-out infinite}
+@keyframes vz-breathe{0%,100%{transform:scale(.6);opacity:.9}50%{transform:scale(1.25);opacity:.25}}
+.vz-paused .vz-loop,.vz-hidden .vz-loop{animation-play-state:paused}
+
+/* ---------------------------------------------------------------- layered vial */
+.vz-lvial{display:inline-flex;align-items:center;gap:12px}
+.vz-lvial svg{width:40px;height:112px;flex:none;overflow:visible;filter:drop-shadow(0 3px 4px rgba(38,20,13,.12))}
+.vz-lv-k{list-style:none;margin:0;padding:0;display:grid;gap:5px;font:400 11.5px/1.2 var(--f-mono);color:var(--body)}
+.vz-lv-k li{display:flex;align-items:center;gap:7px;white-space:nowrap}
+.vz-lv-k b{font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.vz-lv-k i{width:14px;height:8px;border-radius:999px;box-shadow:inset 0 0 0 1px rgba(38,20,13,.15)}
+
+/* ---------------------------------------------------------------- bullet */
+.vz-bullet{display:grid;gap:8px}
+.vz-bl-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.vz-bl-l{font:500 10.5px/1.4 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink)}
+.vz-bl-r{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:14px}
+.vz-bl-v{font:700 22px/1 var(--f-head);letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.vz-bl-v small{font:400 11px var(--f-mono);letter-spacing:0;color:var(--body);margin-left:5px}
+.vz-bl-t{position:relative;display:block;height:12px;border-radius:999px;background:rgba(255,255,255,.7);box-shadow:inset 0 1px 2px rgba(38,20,13,.1),0 0 0 1px rgba(38,20,13,.14)}
+.vz-bl-t.nil{background:repeating-linear-gradient(90deg,rgba(38,20,13,.12) 0 4px,transparent 4px 8px);box-shadow:none}
+.vz-bl-f{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(180deg,#6B4333,#3B2218);box-shadow:inset 0 1px 0 rgba(255,255,255,.25);min-width:4px}
+.vz-bl-g{position:absolute;top:-5px;bottom:-5px;width:3px;margin-left:-1.5px;border-radius:2px;background:#26140D;box-shadow:0 0 0 2px #fff}
+.vz-bl-x{margin:0;font:400 11.5px/1.45 var(--f-mono);color:var(--body)}
+
+/* ---------------------------------------------------------------- thermo chip */
+.vz-thermo{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px 0 8px;border-radius:999px;font:400 12px/1 var(--f-mono);color:var(--body);white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 0 0 1px rgba(38,20,13,.08)}
+.vz-thermo svg{width:10px;height:28px;flex:none;overflow:visible}
+.vz-thermo b{font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.vz-thermo.in{background:rgba(207,238,221,.7)}
+.vz-thermo.out{background:#F9CCD7}
+.vz-thermo.out span{color:#8A2D45;font-weight:500}
+
+/* glyph + empty art */
+.vz-glyph{width:20px;height:20px;flex:none;vertical-align:middle;overflow:visible}
+.vz-empty{display:block;max-width:100%;height:auto;overflow:visible}
+.vz-ep{transform-box:fill-box;transform-origin:center}
+.vz-empty:hover .vz-ep{animation:vz-wiggle .5s ease-in-out}
+.vz-empty:hover g:nth-of-type(4) .vz-ep{animation-delay:.06s}
+.vz-empty:hover g:nth-of-type(5) .vz-ep{animation-delay:.12s}
+.vz-empty:hover g:nth-of-type(6) .vz-ep{animation-delay:.18s}
+@keyframes vz-wiggle{25%{transform:rotate(-9deg)}50%{transform:rotate(7deg) translateY(-2px)}75%{transform:rotate(-4deg)}}
+
+/* ---------------------------------------------------------------- entrances (one per render, skipped under reduced motion) */
+@media (prefers-reduced-motion:no-preference){
+  .vz-liq{animation:vz-rise .9s cubic-bezier(.3,1.5,.5,1) both}
+  .vz-sv .vz-liq{animation-delay:calc(var(--i,0) * 70ms)}
+  @keyframes vz-rise{from{transform:translateY(100%)}}
+  .vz-pocket .vz-dome svg{animation:vz-drop .55s cubic-bezier(.2,1.3,.4,1) both;animation-delay:calc(var(--i,0) * 90ms)}
+  @keyframes vz-drop{from{transform:translateY(-10px) rotate(-12deg);opacity:0}}
+  .vz-rc-in{animation:vz-pop .55s cubic-bezier(.2,1.3,.4,1) both;animation-delay:calc(var(--i,0) * 35ms)}
+  @keyframes vz-pop{from{transform:translateX(-26px) scale(.3);opacity:0}}
+  .vz-cb-fill.r{animation:vz-grow-r .7s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 50ms)}
+  .vz-cb-fill.l{animation:vz-grow-l .7s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 50ms)}
+  @keyframes vz-grow-r{from{transform:translateX(-101%)}}
+  @keyframes vz-grow-l{from{transform:translateX(101%)}}
+  .vz-tl{stroke-dasharray:1;animation:vz-draw 1.1s cubic-bezier(.3,.7,.3,1) both}
+  .vz-hb-line.live,.vz-hb-line.stale{stroke-dasharray:1;animation:vz-draw 1s ease-out both}
+  @keyframes vz-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+  .vz-redraw .vz-tl,.vz-redraw .vz-liq{animation:none}
+  .vz-bl-f{animation:vz-wipe .8s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes vz-wipe{from{clip-path:inset(0 100% 0 0 round 999px)}}
+  .vz-pc{animation:vz-fade .5s ease both}
+  @keyframes vz-fade{from{opacity:0;transform:translateY(4px)}}
+}
+@media (prefers-reduced-motion:reduce){.vz-wave,.vz-hb-ring,.vz-ep,.ml-ants,.ml-rider .ring,.ml-rider .pulse{animation:none!important}}
+
+/* ---------------------------------------------------------------- live map (app map well only; courier keeps app.css) */
+.ml-map .leaflet-tile-pane{filter:grayscale(1) sepia(.15) contrast(.92) brightness(1.04)}
+.ml-map.leaflet-container{background:#F3F1EE;font:12px var(--f-mono)}
+.ml-map .leaflet-control-attribution{background:rgba(255,255,255,.7);border-radius:999px 0 0 0;padding:0 8px;font:10px var(--f-mono)}
+.ml-map .leaflet-bar{border:0;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgba(38,20,13,.1),0 6px 14px rgba(38,20,13,.1)}
+.ml-map .leaflet-bar a{color:var(--ink);background:rgba(255,255,255,.9)}
+.ml-pin{background:none;border:0}
+.ml-pin svg{display:block;overflow:visible;filter:drop-shadow(2px 4px 4px rgba(38,20,13,.28))}
+.ml-ants{animation:ml-march 1.2s linear infinite}
+@keyframes ml-march{to{stroke-dashoffset:-14}}
+.ml-paused .ml-ants,.vz-hidden .ml-ants,.ml-paused .ml-rider .pulse,.vz-hidden .ml-rider .pulse{animation-play-state:paused}
+.ml-rider{background:none;border:0}
+.ml-rider .ring{display:none}
+.ml-rider .pulse{position:absolute;inset:-6px;border-radius:50%;background:rgba(155,100,70,.28);box-shadow:0 0 0 1px rgba(155,100,70,.35);animation:ml-pulse 2s ease-out infinite}
+@keyframes ml-pulse{from{transform:scale(.45);opacity:1}to{transform:scale(1.5);opacity:0}}
+.ml-rider .hd{position:absolute;left:50%;top:50%;width:0;height:0;transform:rotate(var(--hd,0deg))}
+.ml-rider .hd::before{content:"";position:absolute;left:-6px;top:-21px;border:6px solid transparent;border-bottom:9px solid #3B2218;border-top:0}
+.ml-rider .hd.none{display:none}
+.ml-rider .dot{position:absolute;inset:4px;border-radius:50%;background:#3B2218;border:3px solid #fff;box-shadow:0 2px 6px rgba(38,20,13,.45)}

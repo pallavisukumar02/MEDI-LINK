@@ -16,7 +16,9 @@ const median = xs => {
 };
 const round = (n, d = 1) => (n === null ? null : Math.round(n * 10 ** d) / 10 ** d);
 const ms = v => new Date(v).getTime();
-const metric = (id, label, value, unit, target, met, count, text) => ({ id, label, value, unit, target, met, count, text });
+// numeric goal per metric for drawing it (dir: min = at least, max = at most)
+const GOALS = { alertLeadTimeDays: { value: 7, dir: 'min' }, requestToAcceptanceMin: { value: 120, dir: 'max' }, flaggedLotsMoved: { value: 0, dir: 'max' }, traceCompletenessPct: { value: 100, dir: 'min' }, onboardingTimeSec: { value: 120, dir: 'max' } };
+const metric = (id, label, value, unit, target, met, count, text) => ({ id, label, value, unit, target, goal: GOALS[id], met, count, text });
 
 async function compute() {
   const out = [];

@@ -34,7 +34,7 @@ questions: **what is happening** and **what do I do next**.
 | `GET/POST /courier/*` | The courier's page: job, pickup scan, GPS / temperature, road closed (§14). `Authorization: Courier <token>`, no sign-in | holder of the delivery's courier link |
 | `GET /me/stock` | Stock levels, reorder levels, expiring and expired lots (§13) | pharmacist, approver; admin with `?hospital=` |
 | `GET /me/notifications` | The alert inbox, `?status=open\|all` (§13) | pharmacist, approver (own hospital), admin (all) |
-| `GET /health/integrations` · `GET /admin/metrics` · `GET /admin/courier-links` | Which integrations are on / on fallback (§12); PRD success metrics; live courier links (§14) | admin |
+| `GET /health/integrations` · `GET /admin/metrics` · `GET /admin/overview` · `GET /admin/courier-links` | Which integrations are on / on fallback (§12); PRD success metrics; dashboard numbers; live courier links (§14) | admin |
 
 ---
 
@@ -73,7 +73,7 @@ questions: **what is happening** and **what do I do next**.
     }
   ],
   "journeys": [ /* §3, newest first */ ],
-  "coverSummary": { "red": 1, "amber": 1, "green": 5, "windowDays": 14, "text": "1 short, 1 low, 5 covered", "emptyText": null },
+  "coverSummary": { "red": 1, "amber": 1, "green": 5, "windowDays": 14, "drugs": [{ "id": "D-CARB450", "name": "Carboplatin 450 mg", "status": "short", "booked": 16, "covered": 10, "shortfall": 6, "stock": 10, "firstAffectedDate": "2026-11-09" }], "text": "1 short, 1 low, 5 covered", "emptyText": null },
   "empty": {}                               // friendly text for every list that is empty, e.g. { "tasks": "Nothing needs you right now." }
 }
 ```
@@ -85,7 +85,7 @@ questions: **what is happening** and **what do I do next**.
 | `alerts[]` | Already sorted: red first; within a colour, what can hurt a patient today first. `kind`: `EXCURSION`, `RECALL`, `SHORTFALL`, `LICENCE_EXPIRY`, `STALE_FEED`, `BELOW_MARGIN`, then the stock kinds `EXPIRED`, `OUT_OF_STOCK`, `EXPIRING`, `LOW_STOCK` (§13, with `notificationId` + an `ack-alert` button). Show `message` as is. |
 | `stockSummary` | Counts of out-of-stock, low, expiring and expired (§13); `null` for users without a hospital |
 | `tasks[]` | Things this user must act on now, sorted by `urgency` (`high` · `medium` · `low`) then `dueBy`. Exactly one `primaryAction`, optional `secondaryAction`. |
-| `coverSummary` | Counts of red (short), amber (covered but below the safety margin) and green drugs. `emptyText` when nothing is short. |
+| `coverSummary` | Counts of red (short), amber (covered but below the safety margin) and green drugs; `drugs` lists each critical drug (worst first) with `status` short · low · covered · none, booked / covered / shortfall doses and usable stock. `emptyText` when nothing is short. |
 
 ### What each role sees
 
@@ -553,7 +553,8 @@ Empty states the API already provides: "Nothing needs you right now." · "No ale
 
 - `GET /health` (no sign-in) → `{ status, profile, synthetic, services }`, `services` = one line, e.g. "Database: SQLite file · Logins: MediLink accounts · Approvals: built-in · Alerts: in-app · AI: off".
 - `GET /health/integrations` → `{ checkedAt, headline, summary, approvalMode, llmProvider, items: [{ service, status: connected|fallback|misconfigured, mode, text }] }`. Items: Database, Logins, Hospital access tokens, Email alerts (SMTP), SAP Alert Notification, AI (LLM), SAP Build Process Automation, SAP Business Accelerator Hub (sandbox), OR-Tools ranking service, OpenRouteService (roads), Open-Meteo (rain check), MediSoft HIS. E.g. "SAP Build Process Automation — fallback — Off (optional): MediLink runs supplier answers, sign-offs and the 30-minute timer itself (APPROVAL_MODE=cap)."
-- `GET /admin/metrics` → `{ metrics: [{ id, label, value, unit, target, met, count, text }] }` for alert lead time, request-to-acceptance time, flagged lots moved (must stay 0), temperature-trace completeness and onboarding time.
+- `GET /admin/metrics` → `{ metrics: [{ id, label, value, unit, target, goal: { value, dir: min|max }, met, count, text }] }` for alert lead time, request-to-acceptance time, flagged lots moved (must stay 0), temperature-trace completeness and onboarding time.
+- `GET /admin/overview` → `{ generatedAt, kpis, hospitals, cover, expiry, alerts, coldChain, activity }`: the admin dashboard's numbers (feed state, units by expiry, hospital × medicine cover grid, open alerts by kind, temperature traces on the road, latest audit entries). Derived from existing state.
 - Accounts: `GET /auth/users` · `POST /auth/users {username, password, role, hospital, email?}` · `POST /auth/users/{username}/reset-password|disable|enable|email`.
 - `GET /admin/courier-links` (§14). Audit log entries are admin-only; approvers keep `GET /audit/verify`.
 

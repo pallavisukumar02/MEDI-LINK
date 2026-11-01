@@ -47,6 +47,7 @@ async function detectStale(now = new Date(), digest) {
       stale.push(h.ID);
     } else if (!isStale && h.feedStale) {
       await UPDATE('medilink.Hospitals').set({ feedStale: false }).where({ ID: h.ID });
+      await UPDATE('medilink.Notifications').set({ resolvedAt: now.toISOString() }).where({ hospital_ID: h.ID, kind: 'STALE_FEED', resolvedAt: null });
     }
   }
   return stale;

@@ -146,7 +146,13 @@ function coverSummary(board, windowDays) {
     else if (r.status === 'GREEN' && r.belowMargin) c.amber++;
     else if (r.status === 'GREEN') c.green++;
   }
-  return { ...c, windowDays, text: t('cover.summary', c), emptyText: c.red === 0 ? t('empty.cover', { days: windowDays }) : null };
+  // one row per critical drug, worst first (board order), for the home screen's cover visual
+  const drugs = board.map(r => ({
+    id: r.drugId, name: journey.drugName({ genericName: r.genericName, strength: r.strength }),
+    status: r.status === 'RED' ? 'short' : r.status === 'NONE' ? 'none' : r.belowMargin ? 'low' : 'covered',
+    booked: r.booked, covered: r.covered, shortfall: r.shortfall, stock: r.usableStock, firstAffectedDate: r.firstAffectedDate || null,
+  }));
+  return { ...c, windowDays, drugs, text: t('cover.summary', c), emptyText: c.red === 0 ? t('empty.cover', { days: windowDays }) : null };
 }
 
 // ---------------------------------------------------------------- home

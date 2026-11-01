@@ -111,6 +111,7 @@ async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' +
     if (uniq.length) await INSERT.into('medilink.Bookings').entries(uniq);
   }
   await UPDATE('medilink.Hospitals').set({ lastSyncedAt: now, feedStale: false, connected: true }).where({ ID: hospitalId });
+  await UPDATE('medilink.Notifications').set({ resolvedAt: now }).where({ hospital_ID: hospitalId, kind: 'STALE_FEED', resolvedAt: null }); // the feed is back: close its alert
   await audit.log(actor, 'INGEST', { hospital: hospitalId, source, lots: payload.lots ? lots.length : null, bookings: payload.bookings ? bookings.length : null, skipped });
   const digest = []; // a sheet upload or connector push alerts at once: one email for its shortfalls, low stock and expiry
   await recomputeAndAlert([hospitalId], digest);

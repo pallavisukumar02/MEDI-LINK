@@ -88,6 +88,7 @@ describe('PRD section 18 demo through /me/* only', () => {
   test('2. carboplatin is red: alert, stage-1 journey and a prefilled request card', async () => {
     const h = await home('asha');
     expect(h.coverSummary.red).toBeGreaterThanOrEqual(1);
+    expect(h.coverSummary.drugs.filter(d => d.status === 'short')).toHaveLength(h.coverSummary.red);
     expect(h.alerts[0]).toMatchObject({ kind: 'SHORTFALL', severity: 'red', drugId: 'D-CARB450' });
     expect(h.alerts[0].message).toMatch(/^Carboplatin 450 mg: 16 of 40 doses short by \d{1,2} \w{3}$/);
     const j = h.journeys.find(x => x.drug.id === 'D-CARB450');
@@ -251,7 +252,16 @@ describe('PRD section 18 demo through /me/* only', () => {
     expect(by('requestToAcceptanceMin').count).toBeGreaterThanOrEqual(1);
     expect(by('onboardingTimeSec')).toMatchObject({ count: 1, met: true });
     expect(by('alertLeadTimeDays').count).toBeGreaterThanOrEqual(1);
+    expect(m.every(x => Number.isFinite(x.goal?.value) && ['min', 'max'].includes(x.goal.dir))).toBe(true);
     expect((await T.axios.get('/admin/metrics', as('asha'))).status).toBe(403);
+
+    const o = (await T.axios.get('/admin/overview', as('admin'))).data;
+    expect(o.kpis.hospitals.total).toBe(o.hospitals.length);
+    expect(o.kpis.hospitals.live + o.kpis.hospitals.stale + o.kpis.hospitals.offline).toBe(o.kpis.hospitals.total);
+    expect(o.expiry.reduce((n, b) => n + b.units, 0)).toBe(o.hospitals.reduce((n, h) => n + h.units.usable + h.units.expiring + h.units.expired, 0));
+    expect(o.cover.cells.every(c => ['short', 'low', 'covered', 'none'].includes(c.status))).toBe(true);
+    expect(o.alerts.reduce((n, a) => n + a.count, 0)).toBe(o.kpis.alerts.open);
+    expect((await T.axios.get('/admin/overview', as('ravi'))).status).toBe(403);
     expect((await T.axios.get('/audit/verify', as('admin'))).data.ok).toBe(true);
   });
 

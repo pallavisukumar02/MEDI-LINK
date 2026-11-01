@@ -7,6 +7,7 @@
  *   POST /me/actions/:actionId                                         self-describing actions, Idempotency-Key aware
  *   GET  /health/integrations                                          admin: which integrations are on / off / misconfigured
  *   GET  /admin/metrics                                                admin: PRD success metrics
+ *   GET  /admin/overview                                               admin: dashboard numbers (charts)
  *   GET  /admin/courier-links                                          admin: working courier links (simulator, support)
  * Every error is { code, title, message, fix, retryable } from the message catalogue.
  */
@@ -126,6 +127,7 @@ function mount(app) {
 
   app.get('/health/integrations', ...cds.middlewares.before, adminOnly(() => require('./integrations').report()));
   app.get('/admin/metrics', ...cds.middlewares.before, adminOnly(() => require('./metrics').compute()));
+  app.get('/admin/overview', ...cds.middlewares.before, adminOnly(() => require('./overview').overview()));
   app.get('/admin/courier-links', ...cds.middlewares.before, (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); }, adminOnly(() => require('./courier').activeLinks()));
 }
 

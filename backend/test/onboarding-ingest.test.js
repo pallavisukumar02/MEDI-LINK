@@ -103,6 +103,8 @@ describe('SAP sandbox puller, stale feeds and token store', () => {
     expect(n.length).toBeGreaterThanOrEqual(4);
     await cds.tx(() => sync.detectStale(new Date())); // fresh again -> un-greyed
     expect((await get('/odata/v4/admin/Hospitals(\'H3\')', 'admin')).data.feedStale).toBe(false);
+    const open = (await get("/odata/v4/admin/Notifications?$filter=kind eq 'STALE_FEED' and hospital_ID eq 'H3' and resolvedAt eq null", 'admin')).data.value;
+    expect(open).toHaveLength(0); // the feed is back, so its alert is closed
   });
 
   test('local token store encrypts at rest (AES-256-GCM) and round-trips', async () => {

@@ -243,7 +243,7 @@ OR-Tools ranking service, OpenRouteService, Open-Meteo, MediSoft HIS.
 **Experience layer (for UIs):** `GET /me/home` · `GET /me/onboarding` · `GET /me/journeys/{id}` · `GET /me/journeys/{id}/tracking` · `GET /me/city` ·
 `GET /me/stock` · `GET /me/notifications` · `POST /me/actions/{actionId}` (Idempotency-Key aware) and the WebSocket events `journey.updated`, `tracking`;
 contract in [`docs/EXPERIENCE_API.md`](docs/EXPERIENCE_API.md). Courier (no sign-in, `Authorization: Courier <token>`): `GET /courier/job` · `POST /courier/pickup|location|road-closed`.
-Admin: `GET /health/integrations` · `GET /admin/metrics` (PRD §3 success metrics) · `GET /admin/courier-links`.
+Admin: `GET /health/integrations` · `GET /admin/metrics` (PRD §3 success metrics) · `GET /admin/overview` (dashboard numbers) · `GET /admin/courier-links`.
 
 Underlying services: OData v4 under `/odata/v4/<service>`; REST services at their own paths. Highlights:
 `POST /onboarding/licence` · `GET /oauth/medisoft/callback` · `POST /onboarding/revokeAccess` · `POST /connector/pair` · `POST /ingest` (connector token) ·
