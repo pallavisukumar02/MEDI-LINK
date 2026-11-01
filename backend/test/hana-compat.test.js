@@ -7,7 +7,9 @@
  *      experience layer, metrics, jobs) is captured and rendered with SAP HANA's own CQN-to-SQL renderer
  *   4. no TIMESTAMP column is compared with an ISO "...Z" string (implicit conversion is not portable)
  *   5. HANA spatial: geo.distancesKm uses ST_Distance on HANA and Haversine elsewhere, behind one function
- * What this cannot prove: runtime behaviour on a real HANA Cloud instance (see docs/SAP_GO_LIVE.md).
+ *   6. PostgreSQL (standalone-pg, npm run test:pg-compat): the model compiles to PostgreSQL DDL, the same captured
+ *      queries render with @cap-js/postgres' own renderer, distances use Haversine, DATABASE_URL parsing + SSL
+ * What this cannot prove: runtime behaviour on a real HANA Cloud instance or PostgreSQL server.
  */
 require('./helpers/env')({ MATCHER_URL: 'http://localhost:1', MATCHER_FALLBACK_ENABLED: 'true' });
 const fs = require('fs');
@@ -120,4 +122,53 @@ test('HANA spatial: ST_Distance on HANA, Haversine in development, behind geo.di
     cds.db.run = async () => { throw new Error('invalid spatial reference'); };
     expect((await geo.distancesKm(H1, [H5])).H5).toBeCloseTo(dev.H5, 6);
   } finally { cds.db.kind = realKind; cds.db.run = realRun; }
+});
+
+describe('PostgreSQL (standalone-pg)', () => {
+  test('the model compiles to PostgreSQL tables', async () => {
+    const csn = await cds.load(path.join(__dirname, '..', 'srv'));
+    const ddl = cds.compile.to.sql(csn, { dialect: 'postgres' }).join('\n');
+    for (const t of ['medilink_Transfers', 'medilink_Users', 'medilink_Sessions', 'medilink_TokenVault', 'medilink_IdempotencyKeys']) expect(ddl).toMatch(new RegExp(`CREATE TABLE ${t} \\(`));
+    expect(ddl).toMatch(/exp BIGINT/);
+  });
+
+  test('every captured query (cover, rules, routing, journeys, metrics, jobs ...) renders as PostgreSQL SQL', () => {
+    const { CQN2SQL } = require('@cap-js/postgres/lib/PostgresService');
+    const pg = Object.create(cds.db);
+    const failures = [];
+    let n = 0;
+    for (const q of captured) {
+      const kind = Object.keys(q).find(k => ['SELECT', 'INSERT', 'UPSERT', 'UPDATE', 'DELETE'].includes(k));
+      if (!kind) continue;
+      try {
+        const { sql } = new CQN2SQL(pg).render(cds.ql.clone(q));
+        expect(sql).not.toMatch(/\bIFNULL\(|\bDUMMY\b|\bST_\w+\(/); // HANA / SQLite-only functions
+        n++;
+      } catch (e) { failures.push(`${kind} ${JSON.stringify(q).slice(0, 160)}: ${e.message}`); }
+    }
+    expect(failures).toEqual([]);
+    expect(n).toBeGreaterThan(300);
+  });
+
+  test('distances on PostgreSQL use Haversine (ST_Distance is HANA only)', async () => {
+    const geo = require('../srv/lib/geo');
+    const H1 = { ID: 'H1', lat: 12.9299, long: 77.5826 }, H5 = { ID: 'H5', lat: 12.9255, long: 77.5468 };
+    const realKind = cds.db.kind, realRun = cds.db.run, sqls = [];
+    try {
+      cds.db.kind = 'postgres';
+      cds.db.run = async (q, v) => { sqls.push(String(q)); return realRun.call(cds.db, q, v); };
+      expect((await geo.distancesKm(H1, [H5])).H5).toBeCloseTo(require('../srv/lib/routing').haversineKm(H1, H5), 6);
+      expect(geo.isHana()).toBe(false);
+      expect(sqls.filter(s => /ST_Distance/.test(s))).toEqual([]);
+    } finally { cds.db.kind = realKind; cds.db.run = realRun; }
+  });
+
+  test('DATABASE_URL becomes @cap-js/postgres credentials with SSL on and certificates checked', () => {
+    const { pgCredentials } = require('../srv/lib/standalone');
+    expect(pgCredentials('postgresql://med%40user:p%3Ass@db.example.test:6543/medilink')).toEqual({
+      host: 'db.example.test', port: 6543, user: 'med@user', password: 'p:ss', database: 'medilink', ssl: { rejectUnauthorized: true },
+    });
+    expect(pgCredentials('postgres://u:p@h/d?sslmode=no-verify')).toMatchObject({ port: 5432, ssl: { rejectUnauthorized: false } });
+    expect(pgCredentials('postgres://u:p@localhost/d?sslmode=disable').ssl).toBe(false);
+  });
 });

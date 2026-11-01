@@ -316,6 +316,25 @@ entity TokenVault {
       updatedAt   : Timestamp;
 }
 
+/** Standalone mode only (no XSUAA): MediLink's own accounts. role + hospital/partner mirror xs-security.json. */
+entity Users {
+  key username     : String(60);
+      passwordHash : String(100); // bcrypt
+      role         : String(20);  // pharmacist | approver | partner | admin | system
+      hospital     : String(10);
+      partner      : String(10);
+      disabled     : Boolean default false;
+      createdAt    : Timestamp;
+      updatedAt    : Timestamp;
+}
+
+/** Standalone mode: one row per signed-in JWT (logout / disable / password reset delete it). */
+entity Sessions {
+  key jti      : String(36);
+      username : String(60);
+      exp      : Integer64; // epoch seconds, same as the JWT "exp"
+}
+
 entity OAuthStates {
   key state       : String(64);
       hospital_ID : String(10);

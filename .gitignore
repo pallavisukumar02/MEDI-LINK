@@ -19,3 +19,8 @@ connector/hospital_c.db
 secrets.mtaext
 *.mtaext
 !secrets.mtaext.example
+
+# standalone SQLite database (npm run db:init)
+backend/db/medilink.sqlite
+backend/db/medilink.sqlite-*
+backend/db/export/

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { createApp } = require('../server');
 
-const env = { MEDISOFT_OAUTH_CLIENT_ID: 'c1', MEDISOFT_OAUTH_CLIENT_SECRET: 's3cret', MEDISOFT_OAUTH_REDIRECT_URI: 'http://cb.test/callback', PATIENT_REF_HASH_SALT: 'salt' };
+const env = { MEDISOFT_ALLOWED_REDIRECTS: '', MEDISOFT_OAUTH_CLIENT_ID: 'c1', MEDISOFT_OAUTH_CLIENT_SECRET: 's3cret', MEDISOFT_OAUTH_REDIRECT_URI: 'http://cb.test/callback', PATIENT_REF_HASH_SALT: 'salt' };
 let server, base;
 test.before(async () => { server = createApp({ env }).listen(0); base = `http://localhost:${server.address().port}`; });
 test.after(() => server.close());

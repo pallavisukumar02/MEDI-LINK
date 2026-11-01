@@ -27,7 +27,7 @@ async function tokenRequest(params) {
   return { access_token: t.access_token, refresh_token: t.refresh_token, scope: t.scope, expires_at: Date.now() + (t.expires_in || 3600) * 1000, tenant: t.tenant };
 }
 const exchangeCode = code => tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: config.medisoft.redirectUri });
-const refresh = rt => tokenRequest({ grant_type: 'refresh_token', refresh_token: rt });
+const refresh = rt => tokenRequest({ grant_type: 'refresh_token', refresh_token: rt }).then(t => ({ ...t, refresh_token: t.refresh_token || rt })); // keep it if not rotated
 
 async function revoke(token) {
   try {
@@ -36,6 +36,10 @@ async function revoke(token) {
 }
 
 async function apiGet(hospitalId, path, t) {
+  if (t.refresh_token && t.expires_at && t.expires_at < Date.now() + 60000) { // refresh shortly before expiry
+    Object.assign(t, await refresh(t.refresh_token));
+    await tokens.store().save(hospitalId, PROVIDER, t);
+  }
   let res = await http.request(`${config.medisoft.baseUrl}${path}`, { headers: { Authorization: 'Bearer ' + t.access_token } });
   if (res.status === 401 && t.refresh_token) {
     const nt = await refresh(t.refresh_token);

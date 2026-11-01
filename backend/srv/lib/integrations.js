@@ -17,7 +17,56 @@ async function ping(url) {
   try { return (await http.request(url, { timeoutMs: 2000 })).status === 200; } catch { return false; }
 }
 
+const dbName = () => (cds.env.requires.db?.kind === 'postgres' ? 'PostgreSQL' : cds.env.requires.db?.credentials?.url === ':memory:' ? 'SQLite (in memory)' : 'SQLite file');
+const aiOn = () => config.llmProvider !== 'none' && llm.enabled();
+const emailOn = () => require('./notify').channel() === 'smtp';
+
+/** One line for /health and the report, e.g. "Database: PostgreSQL (standalone) · Logins: MediLink accounts · ..." */
+function headline() {
+  if (!config.standalone) return null;
+  return `Database: ${dbName()} (standalone) · Logins: MediLink accounts · Approvals: built-in · Email: ${emailOn() ? 'on' : 'off'} · AI: ${aiOn() ? 'on' : 'off'}`;
+}
+
+/** Standalone mode: the replacement for each SAP BTP service. Its intended state is "connected", not a fallback. */
+function standaloneItems() {
+  const pg = cds.env.requires.db?.kind === 'postgres';
+  return [
+    item('Database (replaces SAP HANA Cloud)', 'connected', pg ? 'Data is stored in PostgreSQL (standalone mode).' : `Data is stored in a ${dbName()} (standalone mode)${dbName() === 'SQLite file' ? '; it survives restarts' : ''}.`, pg ? 'postgres' : 'sqlite'),
+    item('Distances (replaces HANA spatial)', 'connected', 'Straight-line distances are computed in the app (Haversine).', 'haversine'),
+    item('Logins (replaces SAP XSUAA)', 'connected', 'People sign in with MediLink accounts; an admin creates them and resets passwords.', 'medilink-accounts'),
+    item('Hospital access tokens (replaces SAP Destination service)', 'connected', 'Stored encrypted (AES-256-GCM) in the MediLink database.', 'local'),
+    item('Approvals (replaces SAP Build Process Automation)', 'connected', 'Built-in approvals: MediLink runs supplier answers, sign-offs and the 30-minute timer itself.', 'cap'),
+    emailOn()
+      ? item('Email alerts (replaces SAP Alert Notification)', config.alertEmailTo && config.smtp.from ? 'connected' : 'misconfigured', config.alertEmailTo && config.smtp.from ? 'Shortfalls, temperature problems, recalls, licence reminders and stale feeds are also sent by email (not called by this check).' : 'SMTP is set but ALERT_EMAIL_TO or ALERT_EMAIL_FROM is empty, so no email goes out. In-app alerts still work.', 'smtp')
+      : item('Email alerts (replaces SAP Alert Notification)', 'fallback', 'Alerts are shown in the app only (set SMTP_HOST to also send email).', 'in-app'),
+    aiItem('AI (replaces SAP AI Core)') || item('AI (replaces SAP AI Core)', 'fallback', 'AI is off: templates write the explanations; photo reading and alert parsing are switched off.', 'none'),
+  ];
+}
+
+function aiItem(name) {
+  if (config.llmProvider === 'openai-compatible') {
+    const missing = ['LLM_BASE_URL', 'LLM_MODEL'].filter(k => !process.env[k]);
+    return missing.length
+      ? item(name, 'misconfigured', `LLM_PROVIDER is "openai-compatible" but ${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} missing. Everything keeps working without it.`, 'openai-compatible')
+      : item(name, 'connected', `Configured with model ${config.llmModel} on an OpenAI-compatible API (not called by this check).`, 'openai-compatible');
+  }
+  return null;
+}
+
 async function report() {
+  const out = config.standalone ? standaloneItems() : await btpItems();
+  out.push(...await sharedItems());
+  const n = s => out.filter(i => i.status === s).length;
+  const bad = n('misconfigured');
+  return {
+    checkedAt: new Date().toISOString(), mode: config.standalone ? 'standalone' : 'sap-btp', headline: headline(),
+    approvalMode: config.approvalMode, llmProvider: config.llmProvider,
+    summary: `${n('connected')} connected, ${n('fallback')} on fallback, ${bad} need${bad === 1 ? 's' : ''} attention.`,
+    items: out,
+  };
+}
+
+async function btpItems() {
   const out = [];
   const db = cds.env.requires.db?.kind;
   out.push(db === 'hana'
@@ -46,7 +95,9 @@ async function report() {
       : item('SAP Build Process Automation', 'connected', 'Configured: supplier answers, sign-offs and the 30-minute timer run in Build Process Automation (not called by this check).', 'bpa'));
   } else out.push(item('SAP Build Process Automation', 'fallback', 'MediLink runs approvals and the 30-minute timer itself (APPROVAL_MODE=cap).', 'cap'));
 
-  if (config.llmProvider === 'aicore') {
+  const ai = aiItem('SAP AI Core (generative AI hub)');
+  if (ai) out.push(ai);
+  else if (config.llmProvider === 'aicore') {
     const missing = [!config.aicoreModel && 'AICORE_MODEL_NAME', !llm.enabled() && config.aicoreModel && 'an AI Core service key or binding'].filter(Boolean);
     out.push(missing.length
       ? item('SAP AI Core (generative AI hub)', 'misconfigured', `LLM_PROVIDER is "aicore" but ${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} missing. Everything keeps working without it.`, 'aicore')
@@ -58,6 +109,11 @@ async function report() {
     out.push(item('SAP Alert Notification', b ? 'connected' : 'misconfigured', b ? 'Configured: alerts are also sent by email (not called by this check).' : 'Email alerts are switched on but no Alert Notification binding was found. In-app alerts still work.', 'alert-notification'));
   } else out.push(item('SAP Alert Notification', 'fallback', 'Alerts are shown in the app only.', 'in-app'));
 
+  return out;
+}
+
+async function sharedItems() {
+  const out = [];
   out.push(config.sapHub.key
     ? item('SAP Business Accelerator Hub (sandbox)', 'connected', 'The SAP hospital reads live sandbox stock (falls back to the offline copy if the sandbox is down).', 'live')
     : item('SAP Business Accelerator Hub (sandbox)', 'fallback', 'The SAP hospital reads the offline sandbox copy (no API key set).', 'fixture'));
@@ -77,13 +133,7 @@ async function report() {
   const medisoftUp = await ping(`${config.medisoft.baseUrl}/health`);
   out.push(item('MediSoft HIS (partner software)', medisoftUp ? 'connected' : 'misconfigured', medisoftUp ? 'The partner hospital software answers.' : 'The partner hospital software does not answer; MediSoft hospitals cannot sync.', 'oauth'));
 
-  const n = s => out.filter(i => i.status === s).length;
-  const bad = n('misconfigured');
-  return {
-    checkedAt: new Date().toISOString(), approvalMode: config.approvalMode, llmProvider: config.llmProvider,
-    summary: `${n('connected')} connected, ${n('fallback')} on fallback, ${bad} need${bad === 1 ? 's' : ''} attention.`,
-    items: out,
-  };
+  return out;
 }
 
-module.exports = { report };
+module.exports = { report, headline };

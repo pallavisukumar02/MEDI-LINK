@@ -96,8 +96,10 @@ describe('transfer notes', () => {
 
 describe('integration switches and GET /health/integrations', () => {
   const item = (r, name) => r.data.items.find(i => i.service === name);
+  // These assert the SAP BTP switches; the standalone profile turns them off on purpose (see standalone-auth.test.js).
+  const btpOnly = require('./helpers/env').standalone ? test.skip : test;
 
-  test('development: every SAP service reported in plain words, admin only', async () => {
+  btpOnly('development: every SAP service reported in plain words, admin only', async () => {
     expect((await T.axios.get('/health/integrations', as('asha'))).status).toBe(403);
     const r = await T.axios.get('/health/integrations', as('admin'));
     expect(r.status).toBe(200);
@@ -112,7 +114,7 @@ describe('integration switches and GET /health/integrations', () => {
     expect(JSON.stringify(r.data)).not.toMatch(/test-client-secret|test-pairing-secret|test-salt|test-token-store-key/); // values only, never secrets
   });
 
-  test('APPROVAL_MODE=bpa without BPA settings: misconfigured, but requests and approvals still work', async () => {
+  btpOnly('APPROVAL_MODE=bpa without BPA settings: misconfigured, but requests and approvals still work', async () => {
     await ingestH1();
     await withEnv({ APPROVAL_MODE: 'bpa' }, async () => {
       const r = await T.axios.get('/health/integrations', as('admin'));
@@ -127,7 +129,7 @@ describe('integration switches and GET /health/integrations', () => {
     });
   });
 
-  test('LLM_PROVIDER=aicore without key or model: misconfigured, and every LLM feature falls back', async () => {
+  btpOnly('LLM_PROVIDER=aicore without key or model: misconfigured, and every LLM feature falls back', async () => {
     await withEnv({ LLM_PROVIDER: 'aicore', AICORE_MODEL_NAME: '', AICORE_SERVICE_KEY_PATH: './no-such-key.json' }, async () => {
       expect(llm.enabled()).toBe(false);
       const r = await T.axios.get('/health/integrations', as('admin'));

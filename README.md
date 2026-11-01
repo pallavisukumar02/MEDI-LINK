@@ -6,6 +6,7 @@ SAP Hackfest 2026 prototype, built on **free** SAP BTP services only. Product sp
 **Building a UI?** Start with [`docs/EXPERIENCE_API.md`](docs/EXPERIENCE_API.md): a handful of `/me/*` calls give every user their home screen,
 one plain-language journey per request and self-describing buttons. **Going live on SAP BTP?** Follow [`docs/SAP_GO_LIVE.md`](docs/SAP_GO_LIVE.md).
 **Taking over the code?** Read [`HANDOVER.md`](HANDOVER.md).
+**No SAP BTP account?** Run it standalone (SQLite or PostgreSQL, MediLink logins, no BTP service): [§3b](#3b-standalone-mode-no-sap-btp) and [`docs/STANDALONE_HOSTING.md`](docs/STANDALONE_HOSTING.md).
 
 > **All data in this repo is synthetic.** Hospital names, stock, batches, licences and patients are invented;
 > hospital coordinates are real Bengaluru localities. Patient names never enter MediLink: patient refs are
@@ -85,6 +86,40 @@ MediSoft login (inside the mock HIS consent popup): `pharm.jayanagar` / `medisof
 `KA-BLR-20B-1001` (H1, MediSoft, Allow flow) · `KA-BLR-20B-1002` (H2, SAP) · `KA-BLR-20B-1003` (H3, connector → pairing code) ·
 `KA-BLR-20B-1004` (H4, **expired → refused**) · `KA-BLR-20B-1005` (H5, MediSoft).
 
+## 3b. Standalone mode (no SAP BTP)
+
+Same CAP backend, same `/me/*` API and rules, but no SAP BTP service at all. Selected only by configuration: the CAP profile
+`standalone` (SQLite file `backend/db/medilink.sqlite`, survives restarts) or `standalone-pg` (PostgreSQL from `DATABASE_URL`).
+The `development`, `hybrid` and `production` profiles are untouched. Step by step, laptop and free online hosts: [`docs/STANDALONE_HOSTING.md`](docs/STANDALONE_HOSTING.md).
+
+```bash
+# in backend/.env: AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY (32+ random chars each), DEMO_PASSWORD (8+ chars)
+npm run env:check             # says in plain words what is still missing (never prints values)
+npm run db:init               # schema + synthetic seed + demo users (password = DEMO_PASSWORD); keeps an existing database
+npm run start:standalone      # CAP (standalone profile) + matcher + mock MediSoft + simulator; add -- --pg for PostgreSQL
+npm run demo:experience       # signs in through POST /auth/login as each demo user
+npm run db:reset              # start again from the seed (the demo changes the data)
+```
+
+Sign in with `POST /auth/login {"username","password"}` → `{ token, expiresAt, user }`, then send `Authorization: Bearer <token>`
+(WebSocket: `ws://<host>/ws/tracking?access_token=<token>`). `POST /auth/logout`, `GET /auth/me`; admins: `GET|POST /auth/users`,
+`POST /auth/users/<name>/reset-password|disable|enable`. Scripts may also use HTTP Basic with the same account.
+Five wrong passwords pause an account for 15 minutes; the error never says whether the username exists.
+
+| SAP BTP service | Standalone replacement | Selected by | Switch back to BTP |
+|---|---|---|---|
+| SAP HANA Cloud | SQLite file / PostgreSQL (`@cap-js/postgres`, SSL on) | `CDS_ENV=standalone` / `standalone-pg` + `DATABASE_URL` | Remove `CDS_ENV=standalone…`; `npm run db:export` → `cds deploy --to hana` ([SAP_GO_LIVE](docs/SAP_GO_LIVE.md#moving-from-standalone-to-btp)) |
+| HANA spatial `ST_Distance` | Haversine (+ OpenRouteService if `ORS_API_KEY`) | automatic on non-HANA databases (`geo.js`) | automatic on HANA |
+| XSUAA (login, roles) | MediLink accounts: bcrypt passwords, HS256 JWT, same roles + hospital/partner attributes as `xs-security.json` (CAP custom auth `srv/auth.js`) | standalone profiles; `AUTH_JWT_SECRET`, `AUTH_JWT_TTL` | `production` profile (`kind: xsuaa`); map users to role collections |
+| Destination service | AES-256-GCM rows in `TokenVault`, bound to hospital + provider, refreshed before expiry | standalone profiles (always local); `TOKEN_ENCRYPTION_KEY` | Bind `destination`; hospitals press Connect again |
+| Build Process Automation | Built-in approvals + 30-min timer | standalone forces `APPROVAL_MODE=cap` | `APPROVAL_MODE=bpa` + `BPA_*` |
+| Alert Notification | In-app alerts + email over SMTP (nodemailer) | `SMTP_HOST` … `ALERT_EMAIL_FROM`, `ALERT_EMAIL_TO` | `ALERT_NOTIFICATION_ENABLED=true` + binding (BTP profiles) |
+| AI Core | Off (templates), or any OpenAI-compatible API | `LLM_PROVIDER=none` / `openai-compatible` + `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | `LLM_PROVIDER=aicore` (ignored in standalone) |
+| Cloud Foundry + app router | Any Node host (CAP, mock MediSoft) + Python host (matcher, `python app.py`); CAP serves the UI from `frontend/` | `PORT`, `APP_BASE_URL`, `MATCHER_URL`, `MEDISOFT_BASE_URL` | `mbt build` + `cf deploy` (§7) |
+
+`GET /health` says which mode runs, e.g. `"mode": "standalone", "services": "Database: PostgreSQL (standalone) · Logins: MediLink accounts · Approvals: built-in · Email: on · AI: off"`;
+`GET /health/integrations` (admin) lists each replacement. The SAP Business Accelerator Hub sandbox (free api.sap.com key, not BTP) still works in standalone mode.
+
 ## 4. Every command
 
 | Command (repo root) | What it does |
@@ -93,9 +128,15 @@ MediSoft login (inside the mock HIS consent popup): `pharm.jayanagar` / `medisof
 | `npm run seed` | Regenerate the date-relative synthetic seed (CAP CSVs, MediSoft data, connector SQL, SAP fixture). Runs automatically in dev when stale |
 | `npm run dev` | Start CAP + matcher + mock MediSoft + simulator (`--no-sim`, `--no-matcher` to skip one) |
 | `npm run demo` | Run the PRD §18 demo script against the running dev stack |
-| `npm run demo:experience` | The same demo through the experience layer (`/me/*`) only; prints every user's home screen in plain language |
-| `npm test` | All test suites (backend Jest incl. experience e2e, HANA compatibility and 50-hospital performance; mock-medisoft, simulator, matcher pytest, connector pytest) |
-| `npm run test:hana-compat` | HANA readiness without an account: model → HANA DDL, every query the app runs rendered as HANA SQL, SQLite-only lint, spatial switch |
+| `npm run demo:experience` | The same demo through the experience layer (`/me/*`) only; prints every user's home screen in plain language (in standalone mode it signs in through `POST /auth/login`) |
+| `npm run start:standalone` | Like `npm run dev`, but CAP in the `standalone` profile: persistent SQLite file, MediLink logins (`-- --pg` for PostgreSQL) |
+| `npm run db:init` / `db:reset` | Standalone SQLite: create schema + seed + demo users (keeps existing data) / delete and recreate |
+| `npm run db:init:pg` / `db:reset:pg` | The same on PostgreSQL (`DATABASE_URL`) |
+| `npm run db:export` | Every MediLink table as CAP seed CSVs in `backend/db/export/` (for moving to HANA Cloud; `-- --pg` for PostgreSQL) |
+| `npm run env:check` | Which variables are missing for `CDS_PROFILE` (or `-- --profile <name>`), in plain words, never values |
+| `npm test` | All test suites (backend Jest incl. experience e2e, HANA/PostgreSQL compatibility and 50-hospital performance, **then the whole backend suite again under the standalone profile**; mock-medisoft, simulator, matcher pytest, connector pytest) |
+| `npm run test:hana-compat` / `test:pg-compat` | HANA + PostgreSQL readiness without a server: model → HANA / PostgreSQL DDL, every query the app runs rendered as HANA and PostgreSQL SQL, SQLite-only lint, spatial switch |
+| `npm run test:standalone` | The backend Jest suite under the standalone profile (MediLink accounts instead of mocked users) |
 | `npm run test:backend` / `test:medisoft` / `test:simulator` / `test:matcher` / `test:connector` | One suite |
 | `npm run connector:seed` | Build the demo "Hospital C" pharmacy database as `connector/hospital_c.db` (SQLite, from the generated seed SQL) |
 | `npm run seed -- --hospitals 50` | Seed 45 extra synthetic hospitals (scale tests). Run plain `npm run seed` to return to the 5-hospital demo set |
@@ -151,7 +192,7 @@ they come from `cds bind` (`.cdsrc-private.json`) or Cloud Foundry bindings. Eve
 | `ORS_API_KEY`, `ORS_BASE_URL` | *(empty)* | OpenRouteService; empty = Haversine × road factor |
 | `ROAD_FACTOR`, `CITY_SPEED_KMH`, `ROUTE_HANDLING_MIN` | 1.3, 22, 20 | Haversine fallback distance/ETA model |
 | `OPEN_METEO_BASE_URL`, `WEATHER_CHECK_ENABLED`, `WEATHER_CHECK_SEC`, `WEATHER_CLOSE_MM_PER_H` | see template, true, 600, 20 | Rain/flood check that re-plans routes |
-| `LLM_PROVIDER` | `none` | `aicore` or `none`. **Everything works with `none`** (template explanations, manual flags) |
+| `LLM_PROVIDER` | `none` | `aicore`, `openai-compatible` or `none`. **Everything works with `none`** (template explanations, manual flags) |
 | `AICORE_RESOURCE_GROUP`, `AICORE_MODEL_NAME`, `AICORE_SERVICE_KEY_PATH` | `default`, *(empty)*, `./aicore-key.json` | SAP AI Core generative AI hub |
 | `TRUST_FEED_LLM_ENABLED` | true | Allow LLM parsing of CDSCO alerts (only effective when the LLM is enabled) |
 | `APPROVAL_MODE` | `cap` | `cap` = CAP-native approval flow + timer; `bpa` = SAP Build Process Automation drives it |
@@ -172,6 +213,19 @@ they come from `cds bind` (`.cdsrc-private.json`) or Cloud Foundry bindings. Eve
 | `SIM_TELEMETRY_INTERVAL_SEC`, `SIM_EXCURSION_ENABLED`, `SIM_EXCURSION_AFTER_TICKS`, `SIM_SPEEDUP` | 5, true, 3, 10 | Simulator cadence / one deliberate excursion / speed |
 | `SIM_USER`, `SIM_PASSWORD`, `SIM_BEARER_TOKEN` | `sim`, `demo`, *(empty)* | Simulator credentials (bearer token for a deployed app) |
 | `PYTHON` | auto | Python executable for `npm run dev` / e2e test |
+
+**Standalone mode** (see §3b; all in `backend/.env.example`, `npm run env:check` checks them):
+
+| Variable | Default | Used by / meaning |
+|---|---|---|
+| `CDS_PROFILE` | `standalone` | Which standalone profile the npm scripts use (`standalone` / `standalone-pg`). On a host set `CDS_ENV` to it |
+| `DATABASE_URL` | *(empty)* | PostgreSQL connection string (`standalone-pg`); SSL on, `?sslmode=no-verify` for self-signed certificates |
+| `AUTH_JWT_SECRET` | **required** | Signs login tokens (32+ random chars). The server refuses to start without it |
+| `AUTH_JWT_TTL` | `8h` | Login lifetime (`30m`, `8h`, `2d`, or seconds) |
+| `DEMO_PASSWORD` | *(empty)* | Password of the demo users created by `db:init` (8+ chars). Never hard-coded |
+| `TOKEN_ENCRYPTION_KEY` | **required** | AES-256-GCM key for hospital OAuth tokens (32+ chars; `TOKEN_STORE_KEY` is the older name). Keep it stable |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `ALERT_EMAIL_FROM` | *(empty)*, 587 | Email alerts (shortfall, excursion, recall, licence expiring, stale feed) to `ALERT_EMAIL_TO`; off while `SMTP_HOST` is empty |
+| `LLM_PROVIDER=openai-compatible`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | off | Any OpenAI-compatible chat API (`POST {LLM_BASE_URL}/chat/completions`); the number/batch guards still apply |
 
 ## 6. Hybrid mode (bound SAP HANA Cloud)
 

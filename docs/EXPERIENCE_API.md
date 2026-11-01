@@ -14,7 +14,7 @@ questions: **what is happening** and **what do I do next**.
 | | |
 |---|---|
 | Base URL | development `http://localhost:4004` · Cloud Foundry: the **app router** URL (`medilink-approuter`) |
-| Sign-in | development: HTTP Basic with a demo user (`asha`, `ravi`, `meera`, `kiran`, `partner`, `admin`, …, password `demo`). Production: the app router logs the user in with XSUAA and forwards the token; send no credentials yourself. |
+| Sign-in | development: HTTP Basic with a demo user (`asha`, `ravi`, `meera`, `kiran`, `partner`, `admin`, …, password `demo`). Production: the app router logs the user in with XSUAA and forwards the token; send no credentials yourself. **Standalone mode** (no BTP): `POST /auth/login {"username","password"}` → `{ token, tokenType: "Bearer", expiresAt, user: { username, role, hospital, partner } }`; send `Authorization: Bearer <token>`; `POST /auth/logout` ends it; `GET /auth/me`. A 401 `SESSION_EXPIRED` means: show the sign-in screen again. `GET /health` tells you which mode runs (`mode`). |
 | CSRF (production only) | the app router protects `POST`. Fetch a token once with `GET /me/home` + header `X-CSRF-Token: Fetch`, then send `X-CSRF-Token: <value>` on every `POST`. |
 | Format | JSON in, JSON out. Dates `YYYY-MM-DD`, timestamps ISO-8601 UTC. Every text meant for people is already written for them (times shown in India time, e.g. `2:15 pm`). |
 | Language | `Accept-Language` picks the text bundle. Today only English exists; other languages fall back to English (see §11). |
@@ -407,6 +407,10 @@ a rule number; `code` stays for logs and tests.
 | `ACTION_IN_PROGRESS` | Still working on it | Wait a moment, then refresh. | yes |
 | `NOT_ALLOWED` | Not available for your role | Ask your MediLink admin if you think you should. | no |
 | `NOT_SIGNED_IN` | Please sign in | Sign in and try again. | no |
+| `LOGIN_FAILED` | Wrong username or password | Check both and try again. Your MediLink admin can reset your password. | no |
+| `TOO_MANY_LOGIN_ATTEMPTS` | Too many tries | Wait 15 minutes, then try again, or ask your MediLink admin to reset your password. | no |
+| `SESSION_EXPIRED` | Please sign in again | Sign in again to continue. | no |
+| `WEAK_PASSWORD` / `USER_EXISTS` / `USER_NOT_FOUND` / `CANNOT_DISABLE_SELF` | (admin user management, standalone) | see `backend/_i18n/messages.properties` | no |
 | `NOT_FOUND` | Not found | Go back to your home screen. | no |
 | `NOTHING_TO_REQUEST` | Already requested | Follow it on your home screen. | no |
 | `UNEXPECTED` | Something went wrong | Try again in a minute. If it keeps happening, contact MediLink support. | yes |
@@ -464,7 +468,7 @@ plain-language reason). The licence number is the only thing a pharmacist types.
 ## 9. Live updates (WebSocket)
 
 Connect to `ws://<host>/ws/tracking` (behind the app router: `wss://<router>/ws/tracking`; development: send the
-Basic `Authorization` header on the upgrade request). On connect the server puts the socket into the user's own
+Basic `Authorization` header on the upgrade request; standalone mode: `ws://<host>/ws/tracking?access_token=<token>`, because browsers cannot set headers on a WebSocket). On connect the server puts the socket into the user's own
 contexts (`hospital:<id>`, `hospital:<id>:<role>`, `partner:<id>`, `admin`); a client cannot join any other.
 Each event reaches only the supplier, the receiver and the courier of that delivery (plus admins).
 

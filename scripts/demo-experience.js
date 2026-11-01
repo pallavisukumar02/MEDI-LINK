@@ -9,12 +9,25 @@
  */
 const BASE = (process.env.APP_BASE_URL || 'http://localhost:4004').replace(/\/$/, '');
 const MS = (process.env.MEDISOFT_BASE_URL || 'http://localhost:4100').replace(/\/$/, '');
-const auth = u => 'Basic ' + Buffer.from(`${u}:demo`).toString('base64');
+require('../simulator/index.js').loadEnv(require('path').join(__dirname, '..', 'backend', '.env')); // DEMO_PASSWORD (never printed)
+// development: mocked users (Basic, password "demo"); standalone: real logins through POST /auth/login (JWT)
+let standalone = false;
+const tokens = {};
+async function auth(u) {
+  if (!standalone) return 'Basic ' + Buffer.from(`${u}:demo`).toString('base64');
+  if (!tokens[u]) {
+    const r = await fetch(BASE + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: process.env.DEMO_PASSWORD || '' }) });
+    const body = await r.json();
+    if (r.status !== 200) { console.error(`Login as ${u} failed: ${body.title}. ${body.fix}`); process.exit(1); }
+    tokens[u] = 'Bearer ' + body.token;
+  }
+  return tokens[u];
+}
 const C = { b: s => `\x1b[1m${s}\x1b[0m`, dim: s => `\x1b[2m${s}\x1b[0m`, red: s => `\x1b[31m${s}\x1b[0m`, green: s => `\x1b[32m${s}\x1b[0m`, amber: s => `\x1b[33m${s}\x1b[0m`, grey: s => `\x1b[90m${s}\x1b[0m`, cyan: s => `\x1b[36m${s}\x1b[0m` };
 const dot = c => ({ red: C.red('●'), amber: C.amber('●'), green: C.green('●'), grey: C.grey('●') }[c] || '●');
 
 async function api(method, path, user, body, headers = {}) {
-  const res = await fetch(BASE + path, { method, headers: { Authorization: auth(user), 'Content-Type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(BASE + path, { method, headers: { Authorization: await auth(user), 'Content-Type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
   const text = await res.text();
   let data; try { data = text ? JSON.parse(text) : {}; } catch { data = text; }
   return { status: res.status, data };
@@ -56,8 +69,8 @@ async function allowInMediSoft(url) {
 }
 
 (async () => {
-  try { await fetch(BASE + '/health'); } catch { console.error(`CAP is not reachable at ${BASE}. Start it with: npm run dev`); process.exit(1); }
-  console.log(C.b('MediLink demo through the experience layer (/me/*) - SYNTHETIC data, mocked users, no SAP credentials'));
+  try { standalone = (await (await fetch(BASE + '/health')).json()).mode === 'standalone'; } catch { console.error(`CAP is not reachable at ${BASE}. Start it with: npm run dev`); process.exit(1); }
+  console.log(C.b(`MediLink demo through the experience layer (/me/*) - SYNTHETIC data, ${standalone ? 'standalone mode, real logins (POST /auth/login)' : 'mocked users'}, no SAP credentials`));
 
   beat('1. Onboarding: licence number + Allow');
   const ob = (await api('GET', '/me/onboarding', 'asha')).data;
@@ -109,8 +122,8 @@ async function allowInMediSoft(url) {
   await showAll('asha', 'lata');
 
   beat('6. Arrival: scan, checks, coverage turns green, loan shown to both');
-  await device({ transfer: jid.transferId, ...at(0.98), temperatureC: 24.9 });
-  const arr = task(await home('asha'), 'arrival');
+  let arr; // the simulator may move the courier between our fix and the read, so re-send the fix a few times
+  for (let i = 0; i < 5 && !arr; i++) { await device({ transfer: jid.transferId, ...at(0.98), temperatureC: 24.9 }); arr = task(await home('asha'), 'arrival'); }
   must(arr, `asha: ${arr?.title} · ${arr?.subtitle}`);
   said('asha', await tap('asha', arr.primaryAction, { batchNo: batches, sealIntact: false }));
   const ok = await tap('asha', arr.primaryAction, { batchNo: batches, sealIntact: true });

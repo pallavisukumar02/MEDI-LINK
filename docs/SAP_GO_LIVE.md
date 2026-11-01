@@ -164,3 +164,35 @@ but not fully configured shows **misconfigured** and MediLink keeps using its bu
 | `ST_Distance` query text and the switch between HANA and Haversine | HANA spatial results on a live instance |
 | mta.yaml: free plans only, app router module, XSUAA + destination wiring, xs-app.json routes | `mbt build` + `cf deploy`, XSUAA login, role collections |
 | BPA / AI Core / Alert Notification switches fall back cleanly and report "misconfigured" | Real BPA process, AI Core model calls, email delivery |
+
+## Moving from standalone to BTP
+
+If MediLink has been running without BTP (`docs/STANDALONE_HOSTING.md`), nothing in the code changes: the profile does.
+Standalone is selected only by `CDS_ENV=standalone` / `standalone-pg`; remove that and the BTP profiles above apply again.
+
+1. [ ] **Export the data** (on the machine whose `backend/.env` points at the standalone database):
+   `npm run db:export` (SQLite file) or `npm run db:export -- --pg` (PostgreSQL). This writes every MediLink table as CAP
+   seed CSVs to `backend/db/export/`. Accounts, sessions and the encrypted hospital tokens are deliberately left out.
+2. [ ] **Load it into HANA Cloud**: copy the CSVs over `backend/db/data/` (keep the old seed in git if you want it back), then
+   Part 3: `cds deploy --to hana --profile hybrid`. The audit chain, ledger, transfers and connector tokens (stored hashed) come across as they are.
+   Set `SEED_AUTO_REFRESH=false` in `backend/.env` first and do not run `npm run seed`: both would overwrite the copied
+   CSVs with fresh synthetic data.
+3. [ ] **Map the users to XSUAA role collections** (Part 5). `GET /auth/users` as a standalone admin lists everyone:
+
+   | Standalone user | XSUAA |
+   |---|---|
+   | role `pharmacist`, hospital `H1` | role from template **pharmacist**, attribute hospital = `H1`, in a collection such as `MediLink_Pharmacist_H1` |
+   | role `approver`, hospital `H5` | template **approver**, hospital = `H5` |
+   | role `partner`, partner `P1` | template **partner**, attribute partner = `P1` |
+   | role `admin` | role collection `MediLink_Admin` |
+   | role `system` (`bpa`) | not a person: BPA uses the client-credentials token of `medilink-uaa` |
+
+   Passwords do not move: people sign in with their SAP BTP / identity-provider account. User IDs in old audit entries stay as they were.
+4. [ ] **Reconnect the hospitals.** Hospital access tokens were encrypted with `TOKEN_ENCRYPTION_KEY` and are not exported.
+   Each MediSoft hospital opens MediLink and presses **Connect** again (the new token goes to the Destination service).
+   Update `MEDISOFT_OAUTH_REDIRECT_URI` / `MEDISOFT_ALLOWED_REDIRECTS` to the app router URL. Database connectors keep their
+   token but need `CONNECTOR_INGEST_URL` changed to the new URL. The SAP sandbox hospital needs nothing.
+5. [ ] **Switch the services back on** (Part 6): `APPROVAL_MODE=bpa`, `LLM_PROVIDER=aicore`, `ALERT_NOTIFICATION_ENABLED=true`
+   as wanted; remove `CDS_ENV=standalone…`, `DATABASE_URL`, `AUTH_JWT_SECRET` from the deployment. `SMTP_*` may stay
+   (email is used when Alert Notification is off).
+6. [ ] Check `/health`: `"mode": "sap-btp"`, and `/health/integrations` lists the SAP services as **connected**.

@@ -2,7 +2,8 @@
 
 Who this is for: the next developer. Read this, then `README.md` (commands, env vars), then `docs/EXPERIENCE_API.md`
 (the contract a UI builds on) and `docs/SAP_GO_LIVE.md` (BTP set-up). The product spec is `docs/MediLink_PRD.md`;
-sections 5, 6, 8–12 and 18 are binding.
+sections 5, 6, 8–12 and 18 are binding. **No BTP account?** `docs/STANDALONE_HOSTING.md` runs everything without SAP BTP
+(profiles `standalone` / `standalone-pg`, README §3b).
 
 ## Rules (also in `CLAUDE.md`)
 
@@ -41,7 +42,12 @@ sections 5, 6, 8–12 and 18 are binding.
 | `connector/` | Python read-only DB connector; `seed_sqlite.py` builds the SQLite demo DB |
 | `mock-medisoft/`, `simulator/` | Mock partner HIS (OAuth) and courier telemetry |
 | `seed/generate.js` | Synthetic, date-relative seed for every component; `scale()` adds hospitals for performance tests |
-| `scripts/` | `dev.js`, `demo.js`, `demo-experience.js`, `py.js` (cross-platform Python launcher) |
+| `scripts/` | `dev.js` (`--standalone [--pg]` = `npm run start:standalone`), `demo.js`, `demo-experience.js` (signs in via `/auth/login` in standalone), `py.js` (cross-platform Python launcher), `db.js` (`db:init`/`db:reset`/`db:init:pg`/`db:export`), `env-check.js` |
+| **Standalone mode** (no SAP BTP) | |
+| `backend/package.json` `cds.requires` | `[standalone!]` = SQLite file `db/medilink.sqlite`, `[standalone-pg!]` = `@cap-js/postgres`; both `auth.impl = srv/auth.js`. `!` = wins over `[production]` when a host sets `NODE_ENV=production` |
+| `backend/srv/lib/standalone.js` | Is standalone on; `DATABASE_URL` → PostgreSQL credentials (SSL on); required variables (shared by server start-up check and `env:check`) |
+| `backend/srv/lib/accounts.js`, `srv/auth.js` | MediLink accounts (replaces XSUAA): bcrypt, HS256 JWT + `Sessions` row per token, login rate limit, `/auth/*` routes, CAP custom-auth middleware (Bearer, `?access_token=` on WebSocket upgrades, Basic for scripts), demo-user seeding from the mocked users' roles |
+| Adapters that pick by profile/config | `tokens.js` (Destination or AES-256-GCM `TokenVault`, AAD-bound, always local in standalone), `notify.js` (`channel()`: Alert Notification / SMTP / console), `llm.js` (`aicore` / `openai-compatible` / none), `config.js` (standalone forces `APPROVAL_MODE=cap`, ignores `aicore`), `integrations.js` (`headline()` + standalone items), `geo.js` (unchanged: Haversine on any non-HANA db) |
 | `app/router/` | SAP app router for Cloud Foundry (XSUAA login, routes); the MTA build copies `frontend/` into `resources/` |
 | `frontend/index.html` | Landing page (neumorphic grey + root beer, Three.js r128 blister pack, pill-bottle "How it works") |
 | `frontend/app.html` | Sign-in (glass bottle, Three.js tablet pile with bounded physics) and the signed-in app: home, onboarding checklist in the bottle, journey detail, city, admin. Renders every button and form from the API's action descriptors; errors show title / message / fix, never the code |
@@ -58,10 +64,15 @@ sections 5, 6, 8–12 and 18 are binding.
 | `backend/test/hana-compat.test.js` | HANA DDL, every captured query rendered as HANA SQL, SQLite-only lint, timestamp comparisons, spatial switch |
 | `backend/test/perf.test.js` | 50 hospitals: board < 2 s, ranking < 10 s (OR-Tools), `/me/home` < 1 s |
 | `backend/test/deployment.test.js` | mta.yaml free plans, app router + XSUAA + destination wiring, xs-app.json routes |
+| `backend/test/standalone-auth.test.js` | Standalone: login / logout / JWT expiry, forged, `alg:none` and tampered tokens, generic wrong-password text, rate limit, roles + hospital restrictions under custom auth, admin user management, WebSocket `?access_token=`, token store round trip + tampering + row swap, `/health` wording |
+| `backend/test/standalone-adapters.test.js` | SMTP alerts with a fake transport, OpenAI-compatible LLM against a fake server (note + photo guards still apply), `env:check` |
+| `backend/test/standalone-persistence.test.js` | `db:init` + two real CAP processes on one SQLite file: data, accounts and sessions survive a restart; `db:export` CSVs load back unchanged |
+| `backend/test/hana-compat.test.js` (also `test:pg-compat`) | now also PostgreSQL: DDL, every captured query rendered by `@cap-js/postgres`, Haversine on PostgreSQL, `DATABASE_URL` parsing |
+| `npm run test:standalone` | The **whole backend suite again** under the standalone profile (MediLink accounts, password `demo`); 3 BTP-switch tests are skipped there by design (`btpOnly`) |
 | older suites | cover, rules, routing, audit chain, onboarding/ingest, workflow/ledger, delivery, receipt, trust feed, security, original e2e |
 | `matcher/tests`, `connector/tests`, `mock-medisoft/test`, `simulator/test` | Python and Node component tests (connector now reads the seed DB on SQLite, no skips) |
 
-Counts at handover: backend Jest 122, mock-medisoft 3, simulator 5, matcher 12, connector 8 = **150, all passing, none skipped** (Windows 11).
+Counts at handover (Windows 11, 1 Nov 2026): backend Jest **150** (122 earlier + 3 frontend + 25 standalone), the same backend suite under the standalone profile **147 passed + 3 skipped by design**, mock-medisoft 3, simulator 5, matcher 12, connector 8 = **325 passing, 0 failing**. `npm run demo` and `npm run demo:experience` pass on `npm run dev`; `demo:experience` also passes on `npm run start:standalone` (logins through `/auth/login`), and its results survive a restart.
 
 ## Decisions made in the experience layer
 
@@ -84,6 +95,10 @@ Counts at handover: backend Jest 122, mock-medisoft 3, simulator 5, matcher 12, 
 - CAP registers handlers of a dotted event under its last segment, so `ws.js` emits `updated` to publish `journey.updated` (comment in code; `ws-filter.test.js` fails if CAP changes this).
 - Only English text exists; Kannada / Hindi bundles still need translating.
 - On Windows, stopping `npm run dev` with Ctrl+C now kills the whole process tree (`taskkill /T`); this path was code-reviewed but not exercised by a real Ctrl+C in this session.
+- Standalone login rate limit is in memory, per process, per username (5 wrong passwords → 15-minute pause). With several app instances move it to the database (`shortcut:` in `accounts.js`). Keyed on username, not IP, because IPs behind a free host's proxy are shared or spoofable.
+- Standalone alert emails go to one list (`ALERT_EMAIL_TO`); accounts have no email address yet.
+- The matcher's own "why this plan" LLM rewrite is still AI Core only; with `LLM_PROVIDER=openai-compatible` plan reasons stay template text (CAP's notes, photos and alert parsing do use it).
+- `demo:experience` re-sends the arrival GPS fix up to 5 times: the simulator could overwrite it between the fix and the read (pre-existing race, seen once at the start of the standalone work).
 - Linux was not run in this session (the code is POSIX-safe: Node scripts, `path`, no shell syntax); run `npm test` once on Linux.
 
 ## Prepared, not verified against real SAP (no account yet)
@@ -100,6 +115,9 @@ Counts at handover: backend Jest 122, mock-medisoft 3, simulator 5, matcher 12, 
 | SAP Business Accelerator Hub sandbox | Offline fixture used; live sandbox unverified. |
 | `mbt build` / `cf deploy` | Not run (no CF account, `mbt`/`make` not installed here). |
 | HANA Cloud performance | Not measured (SQLite numbers in README §10). |
+| Standalone on **PostgreSQL** | DDL, query rendering and `DATABASE_URL`/SSL parsing tested offline; **never run against a real PostgreSQL server** (no server here). |
+| Standalone SMTP / OpenAI-compatible | Tested with a fake transport / fake server; no real mail server or model called. |
+| Free online hosts (`docs/STANDALONE_HOSTING.md` Part B) | Written host-neutral; not deployed to any host in this session. `NODE_ENV=production` + `CDS_ENV=standalone` boot was checked locally. |
 
 ## How to continue
 

@@ -5,7 +5,10 @@ const bool = (v, d) => (v === undefined || v === '' ? d : /^(1|true|yes|on)$/i.t
 const str = (v, d) => (v === undefined || v === '' ? d : String(v).trim());
 
 function load(env = process.env) {
+  const standalone = require('./standalone').isStandalone();
+  const llm = str(env.LLM_PROVIDER, 'none').toLowerCase();
   return {
+    standalone, // no SAP BTP services (profiles standalone / standalone-pg)
     appBaseUrl: str(env.APP_BASE_URL, 'http://localhost:4004'),
     timeZone: str(env.APP_TIME_ZONE, 'Asia/Kolkata'), // times shown to users ("arriving ~3:40 pm")
     safetyMarginPct: num(env.DEFAULT_SAFETY_MARGIN_PCT, 20),
@@ -37,17 +40,23 @@ function load(env = process.env) {
     openMeteoUrl: str(env.OPEN_METEO_BASE_URL, 'https://api.open-meteo.com/v1/forecast'),
     weatherCheckEnabled: bool(env.WEATHER_CHECK_ENABLED, true),
     weatherCloseMmPerH: num(env.WEATHER_CLOSE_MM_PER_H, 20),
-    llmProvider: str(env.LLM_PROVIDER, 'none').toLowerCase(),
+    llmProvider: standalone && llm === 'aicore' ? 'none' : llm, // aicore | openai-compatible | none; AI Core is BTP, so off in standalone
+    llmBaseUrl: str(env.LLM_BASE_URL, '').replace(/\/+$/, ''),
+    llmApiKey: str(env.LLM_API_KEY, ''),
+    llmModel: str(env.LLM_MODEL, ''),
     aicoreResourceGroup: str(env.AICORE_RESOURCE_GROUP, 'default'),
     aicoreModel: str(env.AICORE_MODEL_NAME, ''),
     aicoreKeyPath: str(env.AICORE_SERVICE_KEY_PATH, './aicore-key.json'),
     trustFeedLlmEnabled: bool(env.TRUST_FEED_LLM_ENABLED, true),
-    approvalMode: str(env.APPROVAL_MODE, 'cap').toLowerCase(), // cap | bpa
+    approvalMode: standalone ? 'cap' : str(env.APPROVAL_MODE, 'cap').toLowerCase(), // cap | bpa (BPA is BTP: never in standalone)
     bpaApiUrl: str(env.BPA_API_URL, ''),
     bpaDefinitionId: str(env.BPA_DEFINITION_ID, ''),
     bpaDestination: str(env.BPA_DESTINATION, 'medilink-bpa'),
     alertNotificationEnabled: bool(env.ALERT_NOTIFICATION_ENABLED, false),
     alertEmailTo: str(env.ALERT_EMAIL_TO, ''),
+    smtp: { host: str(env.SMTP_HOST, ''), port: num(env.SMTP_PORT, 587), user: str(env.SMTP_USER, ''), pass: str(env.SMTP_PASS, ''), from: str(env.ALERT_EMAIL_FROM, '') },
+    authJwtSecret: str(env.AUTH_JWT_SECRET, ''),
+    authJwtTtl: str(env.AUTH_JWT_TTL, '8h'),
     medisoft: {
       baseUrl: str(env.MEDISOFT_BASE_URL, 'http://localhost:4100'),
       clientId: str(env.MEDISOFT_OAUTH_CLIENT_ID, 'medilink-client'),
@@ -63,7 +72,7 @@ function load(env = process.env) {
     },
     connectorPairingSecret: str(env.CONNECTOR_PAIRING_SECRET, ''),
     tokenStore: str(env.TOKEN_STORE, ''), // '' = auto | local | destination
-    tokenStoreKey: str(env.TOKEN_STORE_KEY, ''),
+    tokenStoreKey: str(env.TOKEN_ENCRYPTION_KEY, str(env.TOKEN_STORE_KEY, '')), // TOKEN_STORE_KEY = older name
     jobsEnabled: bool(env.JOBS_ENABLED, true),
     demoFreshSeed: bool(env.DEMO_FRESH_SEED, true),
   };

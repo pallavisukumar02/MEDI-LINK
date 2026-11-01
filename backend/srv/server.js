@@ -6,6 +6,7 @@
  *  - adds the non-OData endpoints: POST /ingest (connector token), POST /connector/pair,
  *    GET /oauth/medisoft/callback (OAuth 2.0 authorization-code redirect), GET /health
  *  - mounts the experience layer (GET /me/home, POST /me/actions/:id, ...) from lib/http-routes.js
+ *  - standalone profiles (no SAP BTP): PostgreSQL from DATABASE_URL, /auth/* logins (lib/accounts.js), demo users
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
@@ -13,6 +14,9 @@ const cds = require('@sap/cds');
 const express = require('express');
 const crypto = require('crypto');
 const LOG = cds.log('medilink');
+const standalone = require('./lib/standalone');
+standalone.configureDb(); // standalone-pg: DATABASE_URL -> PostgreSQL credentials (SSL on)
+const isStandalone = standalone.isStandalone();
 
 const profiles = cds.env.profiles || [];
 if ((profiles.includes('development') || profiles.includes('test')) && process.env.SEED_AUTO_REFRESH !== 'false') {
@@ -27,11 +31,19 @@ const htmlPage = (title, body) => `<!doctype html><html><head><meta charset="utf
 
 cds.on('bootstrap', app => {
   const json = express.json({ limit: '5mb' });
+  if (isStandalone) {
+    standalone.assertConfig(); // refuses to start without AUTH_JWT_SECRET / TOKEN_ENCRYPTION_KEY / DATABASE_URL
+    require('./lib/accounts').mount(app); // POST /auth/login, /auth/logout, GET /auth/me, admin user management
+  }
   require('./lib/http-routes').mount(app); // /me/* experience layer, /health/integrations, /admin/metrics
   // UI (frontend/): served here in development; on Cloud Foundry the app router serves it (copied at MTA build)
   const ui = path.join(__dirname, '..', '..', 'frontend');
   if (require('fs').existsSync(ui)) app.use(express.static(ui));
-  app.get('/health', (_, res) => res.json({ status: 'UP', profile: profiles.join(','), synthetic: true }));
+  app.get('/health', (_, res) => res.json({
+    status: 'UP', profile: profiles.join(','), synthetic: true,
+    mode: isStandalone ? 'standalone' : profiles.includes('production') ? 'sap-btp' : profiles.includes('hybrid') ? 'hybrid' : 'development',
+    ...(isStandalone && { services: require('./lib/integrations').headline() }),
+  }));
 
   // ---- IT handoff page linked from onboarding ("Waiting for your IT team") ----
   app.get('/connector/setup', (req, res) => {
@@ -125,6 +137,11 @@ cds.on('bootstrap', app => {
 cds.on('served', async () => {
   const db = await cds.connect.to('db');
   require('./lib/audit').guard(db);
+  if (isStandalone) { // first start on an empty database (or in memory): create the demo users if DEMO_PASSWORD is set
+    const r = await cds.tx(() => SELECT.one.from('medilink.Users').columns('username')) ? { created: 0 } : await require('./lib/accounts').seedDemoUsers();
+    if (r.created) LOG.info(`created ${r.created} demo users (password from DEMO_PASSWORD)`);
+    else if (r.reason) LOG.warn(`no users yet and ${r.reason}: nobody can sign in. Set it and restart, or run npm run db:init.`);
+  }
   const config = require('./lib/config');
   if (profiles.includes('development') && config.demoFreshSeed) {
     // Seeded hospitals count as freshly synced at startup so the demo board is not greyed out.

@@ -82,3 +82,9 @@ def rank(body: RankRequest, x_matcher_token: Optional[str] = Header(default=None
         if rewritten:
             p["reason"], p["reasonSource"] = rewritten, "llm"
     return {"engine": "ortools-cp-sat", "requestId": body.requestId, "plans": plans}
+
+
+if __name__ == "__main__":  # python app.py: any Python host; listens on $PORT (default 5001)
+    import uvicorn
+
+    uvicorn.run(app, host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "5001")), log_level="warning")

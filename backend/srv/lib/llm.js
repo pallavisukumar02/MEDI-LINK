@@ -1,12 +1,17 @@
 'use strict';
 /*
- * Optional LLM (SAP AI Core generative AI hub). Everything in MediLink works with LLM_PROVIDER=none.
+ * Optional LLM, one adapter for every provider. Everything in MediLink works with LLM_PROVIDER=none.
+ *   aicore            SAP AI Core generative AI hub (BTP profiles only)
+ *   openai-compatible any OpenAI-style POST {LLM_BASE_URL}/chat/completions (LLM_API_KEY, LLM_MODEL); standalone-friendly
+ * The guards live with the callers and apply to every provider (notes.js: a rewrite that changes a number or batch is
+ * discarded; photo.js: parsed rows whose batch is not in the transcription are dropped).
  * The LLM never decides a match or overrides a hard rule; it only parses documents and writes text.
  */
 const cds = require('@sap/cds');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const http = require('./http');
 const LOG = cds.log('llm');
 
 let override; // tests can inject a fake: llm.setClient(async (messages) => '...')
@@ -21,6 +26,7 @@ function aicoreKey() {
 }
 function enabled() {
   if (override) return true;
+  if (config.llmProvider === 'openai-compatible') return !!(config.llmBaseUrl && config.llmModel);
   return config.llmProvider === 'aicore' && !!aicoreKey() && !!config.aicoreModel;
 }
 
@@ -45,8 +51,20 @@ function sdkClient() {
 async function chat(messages, { maxTokens = 800, temperature = 0 } = {}) {
   if (override) return override(messages);
   if (!enabled()) return null;
+  if (config.llmProvider === 'openai-compatible') return openAiCompatible(messages, { maxTokens, temperature });
   const res = await sdkClient().run({ messages, max_tokens: maxTokens, temperature });
   return res.getContent() ?? null;
+}
+
+async function openAiCompatible(messages, { maxTokens, temperature }) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (config.llmApiKey) headers.Authorization = 'Bearer ' + config.llmApiKey;
+  const res = await http.request(`${config.llmBaseUrl}/chat/completions`, {
+    method: 'POST', headers, timeoutMs: 60000,
+    body: JSON.stringify({ model: config.llmModel, messages, max_tokens: maxTokens, temperature }),
+  });
+  if (res.status !== 200) throw new Error(`LLM API returned ${res.status}`);
+  return res.json?.choices?.[0]?.message?.content ?? null;
 }
 
 /** One image + an instruction -> string (stock-register photos). Same guard rules as chat(). */
