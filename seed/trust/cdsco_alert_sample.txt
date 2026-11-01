@@ -1,0 +1,5 @@
+SYNTHETIC SAMPLE in the layout of a CDSCO monthly drug alert. Not a real alert.
+List of drugs declared Not of Standard Quality / Spurious / Adulterated / Misbranded
+S.No | Name of Drug | Batch No. | Mfg. Date | Exp. Date | Manufactured by | Reason
+1 | Carboplatin Injection 450 mg/45 mL | SOL24Z999 | 01/2024 | 12/2026 | Sunrise Oncology Ltd (synthetic) | Not of standard quality (assay)
+2 | Oxaliplatin for Injection 100 mg | OX23Q404 | 03/2023 | 02/2026 | Deccan Biogenerics (synthetic) | Spurious

@@ -1,0 +1,2 @@
+ID;request_ID;supplier_ID;receiver_ID;drug_ID;qty;status;planRank;partner_ID;distanceKm;etaMin;eta;repaymentMode;requiresSecondSignoff;riskReasons;sealId;loggerId;pickedUpAt;routeClosed;excursion;quarantineSuggested
+a0000000-0000-4000-8000-000000000001;b0000000-0000-4000-8000-000000000001;H2;H3;D-TRAS440;2;IN_TRANSIT;1;P1;16.4;75;2026-11-01T06:27:53.625Z;IN_KIND;true;COLD_CHAIN;SEAL-5521;LOG-7781;2026-11-01T05:12:53.625Z;false;false;false

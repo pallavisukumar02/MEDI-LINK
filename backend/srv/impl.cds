@@ -1,0 +1,16 @@
+using from './services';
+annotate CoverService      with @impl: 'srv/handlers/cover.js';
+annotate OnboardingService with @impl: 'srv/handlers/onboarding.js';
+annotate SyncService       with @impl: 'srv/handlers/sync.js';
+annotate RequestService    with @impl: 'srv/handlers/requests.js';
+annotate SupplierService   with @impl: 'srv/handlers/supplier.js';
+annotate ApprovalService   with @impl: 'srv/handlers/approval.js';
+annotate WorkflowService   with @impl: 'srv/handlers/workflow.js';
+annotate DeliveryService   with @impl: 'srv/handlers/delivery.js';
+annotate RouteService      with @impl: 'srv/handlers/routes.js';
+annotate ReceiptService    with @impl: 'srv/handlers/receipt.js';
+annotate LedgerService     with @impl: 'srv/handlers/ledger.js';
+annotate AuditService      with @impl: 'srv/handlers/audit.js';
+annotate TrustService      with @impl: 'srv/handlers/trust.js';
+annotate AdminService      with @impl: 'srv/handlers/admin.js';
+annotate SettingsService   with @impl: 'srv/handlers/settings.js';

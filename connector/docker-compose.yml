@@ -1,0 +1,24 @@
+# Demo "Hospital C" pharmacy database (Lakeside Oncology Centre, H3) for the MediLink connector.
+# SYNTHETIC data only. Start: docker compose -f connector/docker-compose.yml up -d
+# Seed SQL runs once, on first start of an empty volume. Reset: docker compose -f connector/docker-compose.yml down -v
+services:
+  hospital-c-db:
+    image: postgres:16-alpine
+    container_name: medilink-hospital-c-db
+    environment:
+      POSTGRES_USER: pharmacy
+      POSTGRES_PASSWORD: pharmacy      # demo only; matches CONNECTOR_PG_URL in backend/.env.example
+      POSTGRES_DB: hospital_c
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./seed/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./seed/readonly.sql:/docker-entrypoint-initdb.d/02-readonly.sql:ro
+      - hospital-c-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharmacy -d hospital_c"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  hospital-c-data:

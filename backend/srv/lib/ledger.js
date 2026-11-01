@@ -1,0 +1,30 @@
+'use strict';
+// Lending ledger settlement (FR-26): in kind (linked delivery) or at landed cost (marked paid).
+const audit = require('./audit');
+const err = (status, code, message) => Object.assign(new Error(`${code}: ${message}`), { status, code });
+
+async function settleLoan(loanId, { mode, settlementTransfer, reference }, actor, userHospital) {
+  const loan = await SELECT.one.from('medilink.Ledger').where({ ID: loanId });
+  if (!loan) throw err(404, 'LOAN_NOT_FOUND', loanId);
+  if (userHospital && ![loan.lender_ID, loan.borrower_ID].includes(userHospital)) throw err(403, 'NOT_A_PARTY', 'Only the lender or borrower can settle this loan');
+  if (loan.status !== 'OPEN') throw err(409, 'LOAN_NOT_OPEN', `Loan is ${loan.status}`);
+  mode = String(mode || loan.repaymentMode).toUpperCase();
+  let ref, amount = 0;
+  if (mode === 'IN_KIND') {
+    if (!settlementTransfer) throw err(400, 'SETTLEMENT_TRANSFER_REQUIRED', 'In-kind settlement must link the repayment delivery');
+    const t = await SELECT.one.from('medilink.Transfers').where({ ID: settlementTransfer });
+    if (!t || t.status !== 'DELIVERED') throw err(409, 'REPAYMENT_NOT_DELIVERED', 'The linked repayment transfer must be DELIVERED');
+    if (t.supplier_ID !== loan.borrower_ID || t.receiver_ID !== loan.lender_ID) throw err(409, 'REPAYMENT_WRONG_PARTIES', 'Repayment must go from the borrower to the lender');
+    if (t.drug_ID !== loan.drug_ID) throw err(409, 'REPAYMENT_WRONG_DRUG', 'Repayment must be the same drug');
+    if (Number(t.qtyReceived ?? t.qty) < Number(loan.qty)) throw err(409, 'REPAYMENT_SHORT', `Repayment ${t.qtyReceived ?? t.qty} is less than the loan ${loan.qty}`);
+    ref = 'TRANSFER:' + t.ID;
+  } else if (mode === 'LANDED_COST') {
+    if (!reference) throw err(400, 'PAYMENT_REFERENCE_REQUIRED', 'Landed-cost settlement needs a payment reference');
+    ref = 'PAID:' + reference;
+    amount = Number(loan.landedCost);
+  } else throw err(400, 'INVALID_MODE', 'mode must be IN_KIND or LANDED_COST');
+  await UPDATE('medilink.Ledger').set({ status: 'SETTLED', repaymentMode: mode, settledAt: new Date().toISOString(), settlementRef: ref }).where({ ID: loanId });
+  await audit.log(actor, 'LEDGER_SETTLED', { loan: loanId, mode, ref, amount });
+  return { loanId, status: 'SETTLED', mode, amount };
+}
+module.exports = { settleLoan };

@@ -1,0 +1,19 @@
+{
+  "name": "mock-medisoft",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mock 'MediSoft HIS': OAuth 2.0 authorization server + read-only stock/schedule API (synthetic data)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/oauth.test.js"
+  },
+  "dependencies": {
+    "dotenv": "^16",
+    "express": "^4",
+    "medilink": "file:.."
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

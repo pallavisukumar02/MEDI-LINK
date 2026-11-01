@@ -1,0 +1,112 @@
+{
+  "xsappname": "medilink",
+  "tenant-mode": "dedicated",
+  "description": "MediLink (SAP Hackfest 2026 prototype) - roles: pharmacist, approver, partner, admin; system = BPA technical user",
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.pharmacist",
+      "description": "Hospital pharmacist: cover board, requests, supplier review, receipt, ledger, onboarding"
+    },
+    {
+      "name": "$XSAPPNAME.approver",
+      "description": "Chief pharmacist / oncologist: approve or reject transfers, verify audit chain"
+    },
+    {
+      "name": "$XSAPPNAME.partner",
+      "description": "Licensed cold-chain delivery partner: pickup scan, telemetry, route"
+    },
+    {
+      "name": "$XSAPPNAME.admin",
+      "description": "MediLink administrator: directory, trust feed, all hospitals"
+    },
+    {
+      "name": "$XSAPPNAME.system",
+      "description": "Technical user for SAP Build Process Automation callbacks (/workflow/*); granted to MediLink client-credentials tokens via authorities"
+    }
+  ],
+  "attributes": [
+    {
+      "name": "hospital",
+      "description": "MediLink hospital ID the user acts for (e.g. H1)",
+      "valueType": "string",
+      "valueRequired": false
+    },
+    {
+      "name": "partner",
+      "description": "MediLink delivery partner ID (e.g. P1)",
+      "valueType": "string",
+      "valueRequired": false
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "pharmacist",
+      "description": "Hospital pharmacist (scoped to one hospital)",
+      "scope-references": [
+        "$XSAPPNAME.pharmacist"
+      ],
+      "attribute-references": [
+        {
+          "name": "hospital"
+        }
+      ]
+    },
+    {
+      "name": "approver",
+      "description": "Transfer approver (scoped to one hospital)",
+      "scope-references": [
+        "$XSAPPNAME.approver"
+      ],
+      "attribute-references": [
+        {
+          "name": "hospital"
+        }
+      ]
+    },
+    {
+      "name": "partner",
+      "description": "Delivery partner (scoped to one partner)",
+      "scope-references": [
+        "$XSAPPNAME.partner"
+      ],
+      "attribute-references": [
+        {
+          "name": "partner"
+        }
+      ]
+    },
+    {
+      "name": "admin",
+      "description": "MediLink administrator",
+      "scope-references": [
+        "$XSAPPNAME.admin"
+      ]
+    },
+    {
+      "name": "system",
+      "description": "BPA technical user",
+      "scope-references": [
+        "$XSAPPNAME.system"
+      ]
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "MediLink_Admin",
+      "description": "MediLink administrator",
+      "role-template-references": [
+        "$XSAPPNAME.admin"
+      ]
+    }
+  ],
+  "authorities": [
+    "$XSAPPNAME.system"
+  ],
+  "oauth2-configuration": {
+    "token-validity": 3600,
+    "redirect-uris": [
+      "https://*.cfapps.*.hana.ondemand.com/**",
+      "http://localhost:*/**"
+    ]
+  }
+}

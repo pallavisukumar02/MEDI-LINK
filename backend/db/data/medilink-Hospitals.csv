@@ -1,0 +1,6 @@
+ID;licenceNo;name;address;lat;long;licenceValidTill;software;safetyMarginPct;coverWindowDays;connected;lastSyncedAt;feedStale;adminEmail;synthetic
+H1;KA-BLR-20B-1001;"City Cancer Hospital, Jayanagar";"9th Block, Jayanagar, Bengaluru 560069";12.9299;77.5826;2028-03-31;MEDISOFT;20;14;false;;false;admin.h1@example.org;true
+H2;KA-BLR-20B-1002;"Sanjeevani Hospital, Whitefield";"ITPL Main Road, Whitefield, Bengaluru 560066";12.9698;77.75;2027-12-31;SAP_SANDBOX;20;14;true;2026-11-01T05:17:53.625Z;false;admin.h2@example.org;true
+H3;KA-BLR-20B-1003;"Lakeside Oncology Centre, Koramangala";"5th Block, Koramangala, Bengaluru 560095";12.9352;77.6245;2028-06-30;CONNECTOR;20;14;true;2026-11-01T05:17:53.625Z;false;admin.h3@example.org;true
+H4;KA-BLR-20B-1004;"Hebbal Community Hospital, Hebbal";"Bellary Road, Hebbal, Bengaluru 560024";13.0358;77.597;2026-08-31;SHEET;20;14;true;2026-11-01T05:17:53.625Z;false;admin.h4@example.org;true
+H5;KA-BLR-20B-1005;"Banashankari Care Hospital, Banashankari";"2nd Stage, Banashankari, Bengaluru 560070";12.9255;77.5468;2027-09-30;MEDISOFT;20;14;true;2026-11-01T05:17:53.625Z;false;admin.h5@example.org;true

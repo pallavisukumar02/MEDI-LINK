@@ -1,0 +1,283 @@
+{
+  "_note": "SYNTHETIC offline fixture shaped like API_MATERIAL_STOCK_SRV / api_batch responses. Used when SAP_API_HUB_KEY is empty or the sandbox is unreachable.",
+  "stock": {
+    "d": {
+      "results": [
+        {
+          "Material": "MLK-H2-CARB-A",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "SOL24D201",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "30",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-CARB-B",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "MDL24K450",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "15",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-CARB-C",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "SOL24A090",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "8",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-CARB-D",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "SOL24C300",
+          "InventoryStockType": "02",
+          "MatlWrhsStkQtyInMatlBaseUnit": "4",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-C150-A",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "SOL24E015",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "40",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-TRAS-A",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "NB24T044",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "6",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-CISP50-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "CISP98J865",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "4",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-OXAL100-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "OXAL94H716",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "10",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-OXAL100-2",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "OXAL45J273",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "10",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-PACL260-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "PACL57B446",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "11",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-PACL260-2",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "PACL32A887",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "11",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-DOXO50-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "DOXO25H892",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "7",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-DOXO50-2",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "DOXO33L883",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "7",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-CYCL500-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "CYCL55H210",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "11",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-5FU500-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "5FU596J331",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "6",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-BORT2-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "BORT30J789",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "6",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-RITU500-1",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "RITU18F977",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "8",
+          "MaterialBaseUnit": "VL"
+        },
+        {
+          "Material": "MLK-H2-RITU500-2",
+          "Plant": "1010",
+          "StorageLocation": "101A",
+          "Batch": "RITU71J531",
+          "InventoryStockType": "01",
+          "MatlWrhsStkQtyInMatlBaseUnit": "8",
+          "MaterialBaseUnit": "VL"
+        }
+      ]
+    }
+  },
+  "batch": {
+    "value": [
+      {
+        "Material": "MLK-H2-CARB-A",
+        "Batch": "SOL24D201",
+        "ShelfLifeExpirationDate": "2027-07-19",
+        "Supplier": "Sunrise Oncology Ltd (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-CARB-B",
+        "Batch": "MDL24K450",
+        "ShelfLifeExpirationDate": "2027-05-30",
+        "Supplier": "Medora Labs (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-CARB-C",
+        "Batch": "SOL24A090",
+        "ShelfLifeExpirationDate": "2026-11-11",
+        "Supplier": "Sunrise Oncology Ltd (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-CARB-D",
+        "Batch": "SOL24C300",
+        "ShelfLifeExpirationDate": "2027-06-09",
+        "Supplier": "Sunrise Oncology Ltd (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-C150-A",
+        "Batch": "SOL24E015",
+        "ShelfLifeExpirationDate": "2027-06-29",
+        "Supplier": "Sunrise Oncology Ltd (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-TRAS-A",
+        "Batch": "NB24T044",
+        "ShelfLifeExpirationDate": "2027-08-08",
+        "Supplier": "Nandi Biologics (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-CISP50-1",
+        "Batch": "CISP98J865",
+        "ShelfLifeExpirationDate": "2027-08-11",
+        "Supplier": "Medora Labs (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-OXAL100-1",
+        "Batch": "OXAL94H716",
+        "ShelfLifeExpirationDate": "2027-07-21",
+        "Supplier": "Deccan Biogenerics (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-OXAL100-2",
+        "Batch": "OXAL45J273",
+        "ShelfLifeExpirationDate": "2027-12-03",
+        "Supplier": "Deccan Biogenerics (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-PACL260-1",
+        "Batch": "PACL57B446",
+        "ShelfLifeExpirationDate": "2027-10-18",
+        "Supplier": "Sunrise Oncology Ltd (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-PACL260-2",
+        "Batch": "PACL32A887",
+        "ShelfLifeExpirationDate": "2027-05-25",
+        "Supplier": "Sunrise Oncology Ltd (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-DOXO50-1",
+        "Batch": "DOXO25H892",
+        "ShelfLifeExpirationDate": "2027-11-29",
+        "Supplier": "Kaveri Pharma (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-DOXO50-2",
+        "Batch": "DOXO33L883",
+        "ShelfLifeExpirationDate": "2027-05-28",
+        "Supplier": "Kaveri Pharma (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-CYCL500-1",
+        "Batch": "CYCL55H210",
+        "ShelfLifeExpirationDate": "2027-04-25",
+        "Supplier": "Kaveri Pharma (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-5FU500-1",
+        "Batch": "5FU596J331",
+        "ShelfLifeExpirationDate": "2027-05-22",
+        "Supplier": "Deccan Biogenerics (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-BORT2-1",
+        "Batch": "BORT30J789",
+        "ShelfLifeExpirationDate": "2027-02-04",
+        "Supplier": "Deccan Biogenerics (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-RITU500-1",
+        "Batch": "RITU18F977",
+        "ShelfLifeExpirationDate": "2027-02-03",
+        "Supplier": "Nandi Biologics (synthetic)"
+      },
+      {
+        "Material": "MLK-H2-RITU500-2",
+        "Batch": "RITU71J531",
+        "ShelfLifeExpirationDate": "2027-08-18",
+        "Supplier": "Nandi Biologics (synthetic)"
+      }
+    ]
+  }
+}

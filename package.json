@@ -1,0 +1,26 @@
+{
+  "name": "medilink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MediLink - SAP Hackfest 2026 prototype (synthetic data). CAP + HANA Cloud + OR-Tools on free SAP BTP plans.",
+  "scripts": {
+    "setup": "npm --prefix backend install && npm --prefix mock-medisoft install && npm --prefix simulator install && node scripts/py.js . -m pip install -r matcher/requirements.txt -r connector/requirements.txt",
+    "seed": "node seed/generate.js",
+    "dev": "node scripts/dev.js",
+    "demo": "node scripts/demo.js",
+    "test": "npm run test:backend && npm run test:medisoft && npm run test:simulator && npm run test:matcher && npm run test:connector",
+    "test:backend": "npm --prefix backend test",
+    "test:medisoft": "npm --prefix mock-medisoft test",
+    "test:simulator": "npm --prefix simulator test",
+    "test:matcher": "node scripts/py.js matcher -m pytest -q",
+    "test:connector": "node scripts/py.js connector -m pytest -q",
+    "connector:db": "docker compose -f connector/docker-compose.yml up -d",
+    "connector:run": "node scripts/py.js connector connector.py",
+    "watch:hybrid": "cd backend && cds watch --profile hybrid",
+    "build:mta": "mbt build -t mta_archives",
+    "deploy:cf": "cf deploy mta_archives/medilink_1.0.0.mtar"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

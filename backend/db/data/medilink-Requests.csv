@@ -1,0 +1,2 @@
+ID;hospital_ID;drug_ID;qty;neededBy;allowBrandSwitch;preferredBrand;note;status
+b0000000-0000-4000-8000-000000000001;H3;D-TRAS440;2;2026-11-04;false;Herzuma-S;Seeded shipment for tracking demo (synthetic);IN_PROGRESS
