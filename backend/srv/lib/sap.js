@@ -7,9 +7,7 @@ const config = require('./config');
 const http = require('./http');
 const { ingestSnapshot } = require('./ingest');
 const LOG = cds.log('sap');
-// Repo layout (dev) or the copy the MTA build places next to the deployed srv (production)
-const FIXTURE = [path.resolve(__dirname, '../../../seed/sap-sandbox-fixture.json'), path.resolve(__dirname, '../data/sap-sandbox-fixture.json')].find(f => fs.existsSync(f))
-  || path.resolve(__dirname, '../../../seed/sap-sandbox-fixture.json');
+const FIXTURE = path.resolve(__dirname, '../../../seed/sap-sandbox-fixture.json');
 
 async function fetchLive() {
   const h = { APIKey: config.sapHub.key, Accept: 'application/json' };

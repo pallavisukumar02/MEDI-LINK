@@ -1,13 +1,13 @@
-ID;genericName;strength;dosageForm;criticalFlag;storageClass;nlemSection;unitCost
-D-CARB450;Carboplatin;450 mg/45 mL;Injection;true;AMBIENT;NLEM 2022 s.8;1850
-D-CARB150;Carboplatin;150 mg/15 mL;Injection;true;AMBIENT;NLEM 2022 s.8;720
-D-CISP50;Cisplatin;50 mg/50 mL;Injection;true;AMBIENT;NLEM 2022 s.8;420
-D-OXAL100;Oxaliplatin;100 mg;Powder for injection;true;AMBIENT;NLEM 2022 s.8;2300
-D-PACL260;Paclitaxel;260 mg/43.4 mL;Injection;true;AMBIENT;NLEM 2022 s.8;2900
-D-DOXO50;Doxorubicin;50 mg/25 mL;Injection;true;COLD;NLEM 2022 s.8;650
-D-CYCL500;Cyclophosphamide;500 mg;Powder for injection;true;AMBIENT;NLEM 2022 s.8;180
-D-5FU500;Fluorouracil;500 mg/10 mL;Injection;true;AMBIENT;NLEM 2022 s.8;60
-D-GEMC1G;Gemcitabine;1 g;Powder for injection;true;AMBIENT;NLEM 2022 s.8;1400
-D-TRAS440;Trastuzumab;440 mg;Powder for injection;true;COLD;NLEM 2022 s.8;28000
-D-BORT2;Bortezomib;2 mg;Powder for injection;true;AMBIENT;NLEM 2022 s.8;3500
-D-RITU500;Rituximab;500 mg/50 mL;Injection;true;COLD;NLEM 2022 s.8;26000
+ID;genericName;strength;dosageForm;criticalFlag;storageClass;nlemSection;unitCost;reorderLevel
+D-CARB450;Carboplatin;450 mg/45 mL;Injection;true;AMBIENT;NLEM 2022 s.8;1850;10
+D-CARB150;Carboplatin;150 mg/15 mL;Injection;true;AMBIENT;NLEM 2022 s.8;720;5
+D-CISP50;Cisplatin;50 mg/50 mL;Injection;true;AMBIENT;NLEM 2022 s.8;420;3
+D-OXAL100;Oxaliplatin;100 mg;Powder for injection;true;AMBIENT;NLEM 2022 s.8;2300;4
+D-PACL260;Paclitaxel;260 mg/43.4 mL;Injection;true;AMBIENT;NLEM 2022 s.8;2900;4
+D-DOXO50;Doxorubicin;50 mg/25 mL;Injection;true;COLD;NLEM 2022 s.8;650;4
+D-CYCL500;Cyclophosphamide;500 mg;Powder for injection;true;AMBIENT;NLEM 2022 s.8;180;4
+D-5FU500;Fluorouracil;500 mg/10 mL;Injection;true;AMBIENT;NLEM 2022 s.8;60;3
+D-GEMC1G;Gemcitabine;1 g;Powder for injection;true;AMBIENT;NLEM 2022 s.8;1400;4
+D-TRAS440;Trastuzumab;440 mg;Powder for injection;true;COLD;NLEM 2022 s.8;28000;2
+D-BORT2;Bortezomib;2 mg;Powder for injection;true;AMBIENT;NLEM 2022 s.8;3500;2
+D-RITU500;Rituximab;500 mg/50 mL;Injection;true;COLD;NLEM 2022 s.8;26000;2

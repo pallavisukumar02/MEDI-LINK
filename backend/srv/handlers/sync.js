@@ -8,6 +8,7 @@ const { wrap } = require('./_util');
 const coverdb = require('../lib/coverdb');
 const { resolveDrug, parseDate } = require('../lib/ingest');
 const photo = require('../lib/photo');
+const ratelimit = require('../lib/ratelimit');
 
 module.exports = cds.service.impl(function () {
   this.on('uploadSheet', wrap(async req => {
@@ -28,6 +29,7 @@ module.exports = cds.service.impl(function () {
       const r = await photo.confirm(hId, req.data.previewId, req.user.id);
       return { hospitalId: hId, previewId: req.data.previewId, rows: r.rows, ingested: r.ingested };
     }
+    ratelimit.check(req, 'photo', 10, 60 * ratelimit.MIN); // each preview is a paid LLM call
     const p = await photo.preview(hId, req.data.imageBase64, req.data.mimeType, req.user.id);
     return { hospitalId: hId, previewId: p.previewId, rows: p.rows.length, preview: JSON.stringify(p.rows), dropped: JSON.stringify(p.dropped) };
   }));

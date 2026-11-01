@@ -5,7 +5,7 @@
  * approver reject cancels the loan, ledger settlement in kind / at landed cost.
  * Runs without the Python matcher (CAP's greedy fallback ranks) and without SAP credentials.
  */
-require('./helpers/env')({ MATCHER_URL: 'http://localhost:5999', MATCHER_FALLBACK_ENABLED: 'true', MEDISOFT_BASE_URL: 'http://localhost:4199' });
+require('./helpers/env')({ MATCHER_URL: 'http://localhost:1', MATCHER_FALLBACK_ENABLED: 'true', MEDISOFT_BASE_URL: 'http://localhost:1' });
 const cds = require('@sap/cds');
 const T = cds.test(__dirname + '/..');
 T.axios.defaults.validateStatus = () => true;

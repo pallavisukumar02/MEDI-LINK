@@ -1,8 +1,8 @@
 'use strict';
 /*
  * Optional LLM, one adapter for every provider. Everything in MediLink works with LLM_PROVIDER=none.
- *   aicore            SAP AI Core generative AI hub (BTP profiles only)
- *   openai-compatible any OpenAI-style POST {LLM_BASE_URL}/chat/completions (LLM_API_KEY, LLM_MODEL); standalone-friendly
+ *   openai-compatible any OpenAI-style POST {LLM_BASE_URL}/chat/completions (LLM_API_KEY, LLM_MODEL)
+ *   aicore            SAP AI Core generative AI hub through the SAP Cloud SDK for AI (service key file + AICORE_MODEL_NAME)
  * The guards live with the callers and apply to every provider (notes.js: a rewrite that changes a number or batch is
  * discarded; photo.js: parsed rows whose batch is not in the transcription are dropped).
  * The LLM never decides a match or overrides a hard rule; it only parses documents and writes text.
@@ -18,8 +18,6 @@ let override; // tests can inject a fake: llm.setClient(async (messages) => '...
 function setClient(fn) { override = fn; }
 
 function aicoreKey() {
-  const bound = cds.env.requires?.aicore?.credentials;
-  if (bound) return bound;
   const p = path.resolve(__dirname, '../..', config.aicoreKeyPath);
   if (fs.existsSync(p)) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
   return null;
@@ -32,13 +30,13 @@ function enabled() {
 
 /**
  * SAP AI Core generative AI hub through the SAP Cloud SDK for AI (@sap-ai-sdk/foundation-models).
- * The SDK reads credentials from the "aicore" service binding or AICORE_SERVICE_KEY; for local hybrid runs we
- * hand it the key file named by AICORE_SERVICE_KEY_PATH (in memory only, never logged).
+ * The SDK reads its credentials from AICORE_SERVICE_KEY; we hand it the key file named by AICORE_SERVICE_KEY_PATH
+ * (in memory only, never logged).
  */
 let client;
 function sdkClient() {
   if (client) return client;
-  if (!process.env.AICORE_SERVICE_KEY && !cds.env.requires?.aicore?.credentials) {
+  if (!process.env.AICORE_SERVICE_KEY) {
     const k = aicoreKey();
     if (k) process.env.AICORE_SERVICE_KEY = JSON.stringify(k);
   }

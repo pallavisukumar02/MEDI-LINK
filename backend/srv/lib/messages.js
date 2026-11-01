@@ -9,7 +9,7 @@
 const cds = require('@sap/cds');
 
 // Errors the user can fix by simply trying again (network, a busy service, a double tap still running).
-const RETRYABLE = new Set(['MATCHER_UNAVAILABLE', 'MEDISOFT_TOKEN_FAILED', 'STOCK_CHANGED', 'ACTION_IN_PROGRESS', 'LLM_UNPARSEABLE', 'UNEXPECTED', 'INGEST_FAILED', 'PAIR_FAILED']);
+const RETRYABLE = new Set(['MATCHER_UNAVAILABLE', 'MEDISOFT_TOKEN_FAILED', 'STOCK_CHANGED', 'ACTION_IN_PROGRESS', 'LLM_UNPARSEABLE', 'UNEXPECTED', 'INGEST_FAILED', 'PAIR_FAILED', 'RATE_LIMITED']);
 // Synonyms CAP itself uses for auth / not-found failures.
 const ALIASES = { FORBIDDEN: 'NOT_ALLOWED', UNAUTHORIZED: 'NOT_SIGNED_IN', NOT_FOUND: 'NOT_FOUND' };
 

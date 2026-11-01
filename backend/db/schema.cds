@@ -50,6 +50,7 @@ entity Hospitals : managed {
       adminEmail       : String(120);
       licenceCheckedAt : Timestamp; // onboarding step 1 done (licence looked up and valid)
       synthetic        : Boolean default true;
+      itContact        : String(120); // IT team's email / phone given at onboarding (connector setup link)
       lots             : Association to many Lots on lots.hospital = $self;
       bookings         : Association to many Bookings on bookings.hospital = $self;
 }
@@ -63,6 +64,7 @@ entity Drugs {
       storageClass : StorageClass;
       nlemSection  : String(20);
       unitCost     : Decimal(10, 2); // landed cost per unit, INR (synthetic)
+      reorderLevel : Integer; // low-stock alert level in units when the hospital set none (StockThresholds); empty = not watched
 }
 
 /** Batch passport */
@@ -123,6 +125,7 @@ entity DeliveryPartners {
       active             : Boolean default true;
       lat                : Decimal(9, 6);
       long               : Decimal(9, 6);
+      dispatchEmail      : String(120); // where courier links for new deliveries are emailed
 }
 
 entity Consents : cuid {
@@ -202,6 +205,8 @@ entity Transfers : cuid, managed {
   qtyReceived           : Integer;
   transferNote          : String(1000); // handling note for partner + receiver, written on approval
   workflowInstanceId    : String(80);
+  repaysLoan            : Association to Ledger; // set when this delivery repays an open loan: it records no new (reverse) loan
+  routeJson             : LargeString; // {points:[[lat,long]], steps:[{instruction}]} from openrouteservice, when keyed
   conditionLogs         : Association to many ConditionLogs on conditionLogs.transfer = $self;
 }
 
@@ -226,9 +231,10 @@ entity ConditionLogs : cuid {
   loggedAt     : Timestamp;
   lat          : Decimal(9, 6);
   long         : Decimal(9, 6);
-  temperatureC : Decimal(5, 2);
+  temperatureC : Decimal(5, 2); // null = GPS-only fix from the rider's phone
   sealStatus   : String(10); // INTACT | BROKEN
   excursion    : Boolean default false;
+  accuracyM    : Decimal(7, 1); // GPS accuracy reported by the phone
 }
 
 entity RoadClosures : cuid, managed {
@@ -279,6 +285,7 @@ entity CoverSnapshots {
       computedAt  : Timestamp;
 }
 
+@assert.unique: { dedupe: [dedupeKey] }
 entity Notifications : cuid {
   hospital  : Association to Hospitals;
   kind      : String(30); // SHORTFALL | EXCURSION | STALE_FEED | LICENCE_EXPIRY | ROUTE | FALLBACK
@@ -288,6 +295,11 @@ entity Notifications : cuid {
   dueDate   : Date; // when the problem bites (shortfall: first affected booking) -> alert lead time
   createdAt : Timestamp;
   read      : Boolean default false;
+  dedupeKey  : String(120); // set while a watched condition lasts (one open alert per condition), cleared when it resolves
+  tier       : Integer;     // expiry / licence reminder tier in days (0 = expired)
+  resolvedAt : Timestamp;
+  ackedAt    : Timestamp;   // acknowledged: hidden from the home screen, kept in the inbox
+  ackedBy    : String(120);
 }
 
 /** Experience layer: one row per Idempotency-Key (hashed with the user), so a double tap runs an action once. */
@@ -308,7 +320,7 @@ entity PhotoPreviews {
       usedAt      : Timestamp;
 }
 
-/** Encrypted local token store (development). In hybrid/production tokens live in the Destination service. */
+/** Hospital OAuth tokens, AES-256-GCM encrypted with TOKEN_ENCRYPTION_KEY (lib/tokens.js). */
 entity TokenVault {
   key hospital_ID : String(10);
   key provider    : String(20);
@@ -316,19 +328,19 @@ entity TokenVault {
       updatedAt   : Timestamp;
 }
 
-/** Standalone mode only (no XSUAA): MediLink's own accounts. role + hospital/partner mirror xs-security.json. */
+/** MediLink accounts (lib/accounts.js): one role each, plus the hospital the user acts for. Couriers have no account. */
 entity Users {
   key username     : String(60);
       passwordHash : String(100); // bcrypt
-      role         : String(20);  // pharmacist | approver | partner | admin | system
+      role         : String(20);  // pharmacist | approver | admin | system
       hospital     : String(10);
-      partner      : String(10);
       disabled     : Boolean default false;
+      email        : String(120); // where this person's hospital alerts are emailed
       createdAt    : Timestamp;
       updatedAt    : Timestamp;
 }
 
-/** Standalone mode: one row per signed-in JWT (logout / disable / password reset delete it). */
+/** One row per signed-in JWT (logout / disable / password reset delete it). */
 entity Sessions {
   key jti      : String(36);
       username : String(60);
@@ -340,6 +352,7 @@ entity OAuthStates {
       hospital_ID : String(10);
       userId      : String(120);
       expiresAt   : Timestamp;
+      codeVerifier : String(128); // PKCE (RFC 7636), sent with the code exchange
 }
 
 entity PairingCodes {
@@ -354,6 +367,30 @@ entity ConnectorTokens {
       hospital_ID : String(10);
       createdAt   : Timestamp;
       revokedAt   : Timestamp;
+}
+
+/** Reorder level per hospital and drug (low-stock alerts, lib/monitor.js); without a row Drugs.reorderLevel applies. */
+entity StockThresholds {
+  key hospital  : Association to Hospitals;
+  key drug      : Association to Drugs;
+      minUnits  : Integer;
+      updatedAt : Timestamp;
+      updatedBy : String(120);
+}
+
+/** Courier capability link, one per assigned delivery (lib/courier.js). Only a hash and a ciphertext of the token are kept. */
+entity CourierLinks {
+  key ID         : UUID;
+      transfer   : Association to Transfers;
+      partner    : Association to DeliveryPartners;
+      tokenHash  : String(64); // SHA-256 of the token, for lookup
+      ciphertext : String(200); // AES-256-GCM, bound to the transfer, so the supplier / admin can show the link again
+      createdAt  : Timestamp;
+      expiresAt  : Timestamp;
+      revokedAt  : Timestamp;
+      lastSeenAt : Timestamp;
+      riderName  : String(80);
+      riderPhone : String(20);
 }
 
 /** SAP sandbox material number -> MediLink drug (synthetic mapping) */

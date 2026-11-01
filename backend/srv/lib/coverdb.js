@@ -102,7 +102,7 @@ async function cityView(window) {
   const w = windowOf(window);
   const ctx = await loadContext();
   const agg = {};
-  for (const h of ctx.hospitals) {
+  for (const h of ctx.hospitals.filter(x => x.connected)) { // a disconnected hospital's frozen stock is not city supply
     const drugIds = new Set([...ctx.lots.filter(l => l.hospital_ID === h.ID).map(l => l.drug_ID), ...ctx.bookings.filter(b => b.hospital_ID === h.ID).map(b => b.drug_ID)]);
     for (const id of drugIds) {
       const d = ctx.drugs[id]; if (!d) continue;

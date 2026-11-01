@@ -2,40 +2,29 @@
   "name": "medilink-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "MediLink CAP backend (SAP Hackfest 2026 prototype)",
+  "description": "MediLink CAP backend (SAP Hackfest 2026 prototype): SQLite, MediLink accounts",
   "dependencies": {
     "@cap-js-community/websocket": "^1",
-    "@cap-js/hana": "^3",
-    "@cap-js/postgres": "^3.1.2",
+    "@cap-js/sqlite": "^3",
     "@sap-ai-sdk/foundation-models": "^2.17.0",
     "@sap/cds": "^10",
-    "@sap/xssec": "^4",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16",
     "express": "^4",
     "jsonwebtoken": "^9.0.3",
-    "medilink": "file:..",
-    "nodemailer": "^6.10.1",
+    "nodemailer": "^10.3.1",
     "pdf-parse": "^1.1.4"
   },
   "devDependencies": {
     "@cap-js/cds-test": "^1",
-    "@cap-js/sqlite": "^3",
     "axios": "^1",
-    "jest": "^29",
-    "js-yaml": "^4.3.2"
+    "jest": "^29"
   },
   "scripts": {
     "start": "cds-serve",
-    "start:dev": "cds-serve --profile development",
     "watch": "cds watch",
-    "watch:hybrid": "cds watch --profile hybrid",
     "test": "jest --runInBand",
-    "test:unit": "jest --runInBand test/cover.test.js test/rules.test.js test/routing.test.js test/audit-chain.test.js",
-    "test:hana-compat": "jest --runInBand test/hana-compat.test.js",
-    "build": "cds build --production",
-    "test:standalone": "node test/run-standalone.js",
-    "test:pg-compat": "jest --runInBand test/hana-compat.test.js"
+    "test:unit": "jest --runInBand test/cover.test.js test/rules.test.js test/routing.test.js test/audit-chain.test.js"
   },
   "jest": {
     "testTimeout": 60000,
@@ -45,444 +34,23 @@
   "cds": {
     "requires": {
       "db": {
-        "[development]": {
-          "kind": "sqlite",
-          "credentials": {
-            "url": ":memory:"
-          }
+        "kind": "sqlite",
+        "credentials": {
+          "url": "db/medilink.sqlite"
         },
         "[test]": {
-          "kind": "sqlite",
           "credentials": {
             "url": ":memory:"
           }
-        },
-        "[hybrid]": {
-          "kind": "hana"
-        },
-        "[production]": {
-          "kind": "hana"
-        },
-        "[standalone!]": {
-          "kind": "sqlite",
-          "credentials": {
-            "url": "db/medilink.sqlite"
-          }
-        },
-        "[standalone-pg!]": {
-          "kind": "postgres"
         }
       },
       "auth": {
-        "[development]": {
-          "kind": "mocked",
-          "users": {
-            "asha": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H1"
-              }
-            },
-            "ravi": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "sunil": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H2"
-              }
-            },
-            "lata": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H3"
-              }
-            },
-            "hari": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H4"
-              }
-            },
-            "meera": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "kiran": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "anil": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H2"
-              }
-            },
-            "deepa": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H1"
-              }
-            },
-            "partner": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P1"
-              }
-            },
-            "sim": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P1"
-              }
-            },
-            "bpa": {
-              "password": "demo",
-              "roles": [
-                "system"
-              ],
-              "attr": {}
-            },
-            "admin": {
-              "password": "demo",
-              "roles": [
-                "admin"
-              ],
-              "attr": {}
-            },
-            "*": false,
-            "courier2": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P2"
-              }
-            }
-          }
-        },
-        "[hybrid]": {
-          "kind": "mocked",
-          "users": {
-            "asha": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H1"
-              }
-            },
-            "ravi": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "sunil": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H2"
-              }
-            },
-            "lata": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H3"
-              }
-            },
-            "hari": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H4"
-              }
-            },
-            "meera": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "kiran": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "anil": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H2"
-              }
-            },
-            "deepa": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H1"
-              }
-            },
-            "partner": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P1"
-              }
-            },
-            "sim": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P1"
-              }
-            },
-            "bpa": {
-              "password": "demo",
-              "roles": [
-                "system"
-              ],
-              "attr": {}
-            },
-            "admin": {
-              "password": "demo",
-              "roles": [
-                "admin"
-              ],
-              "attr": {}
-            },
-            "*": false,
-            "courier2": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P2"
-              }
-            }
-          }
-        },
-        "[production]": {
-          "kind": "xsuaa"
-        },
-        "[test]": {
-          "kind": "mocked",
-          "users": {
-            "asha": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H1"
-              }
-            },
-            "ravi": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "sunil": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H2"
-              }
-            },
-            "lata": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H3"
-              }
-            },
-            "hari": {
-              "password": "demo",
-              "roles": [
-                "pharmacist"
-              ],
-              "attr": {
-                "hospital": "H4"
-              }
-            },
-            "meera": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "kiran": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H5"
-              }
-            },
-            "anil": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H2"
-              }
-            },
-            "deepa": {
-              "password": "demo",
-              "roles": [
-                "approver"
-              ],
-              "attr": {
-                "hospital": "H1"
-              }
-            },
-            "partner": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P1"
-              }
-            },
-            "sim": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P1"
-              }
-            },
-            "bpa": {
-              "password": "demo",
-              "roles": [
-                "system"
-              ],
-              "attr": {}
-            },
-            "admin": {
-              "password": "demo",
-              "roles": [
-                "admin"
-              ],
-              "attr": {}
-            },
-            "*": false,
-            "courier2": {
-              "password": "demo",
-              "roles": [
-                "partner"
-              ],
-              "attr": {
-                "partner": "P2"
-              }
-            }
-          }
-        },
-        "[standalone!]": {
-          "kind": "custom",
-          "impl": "srv/auth.js"
-        },
-        "[standalone-pg!]": {
-          "kind": "custom",
-          "impl": "srv/auth.js"
-        }
-      },
-      "destinations": {
-        "[hybrid]": true,
-        "[production]": true
+        "kind": "custom",
+        "impl": "srv/auth.js"
       },
       "websocket": {
         "kind": "ws"
       }
-    },
-    "hana": {
-      "deploy_format": "hdbtable"
-    },
-    "sql": {
-      "native_hana_associations": false
     },
     "server": {
       "body_parser": {
@@ -491,6 +59,6 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   }
 }

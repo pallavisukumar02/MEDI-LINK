@@ -2,8 +2,8 @@
 /*
  * B2: stock-register photo (preview -> confirm, batch-visibility guard, LLM off = LLM_DISABLED) and transfer notes
  *     (template; an LLM rewrite is used only if it keeps every number and batch code).
- * B4: GET /health/integrations in plain words; APPROVAL_MODE=bpa and LLM_PROVIDER=aicore with missing config
- *     report "misconfigured" while MediLink keeps working on its fallbacks.
+ * B4: GET /health/integrations in plain words; the optional SAP integrations (APPROVAL_MODE=bpa, LLM_PROVIDER=aicore,
+ *     ALERT_NOTIFICATION_URL) with missing config report "misconfigured" while MediLink keeps working on its fallbacks.
  * The LLM is a fake injected with llm.setClient; no SAP credentials are used.
  */
 require('./helpers/env')({ MATCHER_URL: 'http://localhost:1', MATCHER_FALLBACK_ENABLED: 'true' });
@@ -60,7 +60,8 @@ describe('stock-register photo', () => {
     expect(c.status).toBe(200);
     expect(c.data.message).toBe('Saved 1 stock rows from your photo.');
     const after = await sheetLots();
-    expect(after.map(l => [l.batchNo, l.quantity, l.expiryDate])).toEqual([['PH24A001', 18, '2027-03-31']]);
+    expect(after.length).toBe(before.length + 1); // F13: one register page merges into the sheet stock, the rest stays
+    expect(after.find(l => l.batchNo === 'PH24A001')).toMatchObject({ quantity: 18, expiryDate: '2027-03-31' });
     const twice = await act('hari', 'confirm-photo', r.data.next.action.body);
     expect(twice.data).toMatchObject({ code: 'PREVIEW_NOT_FOUND', title: 'This preview has expired' });
     const other = await act('asha', 'confirm-photo', r.data.next.action.body); // another hospital's preview
@@ -96,25 +97,22 @@ describe('transfer notes', () => {
 
 describe('integration switches and GET /health/integrations', () => {
   const item = (r, name) => r.data.items.find(i => i.service === name);
-  // These assert the SAP BTP switches; the standalone profile turns them off on purpose (see standalone-auth.test.js).
-  const btpOnly = require('./helpers/env').standalone ? test.skip : test;
-
-  btpOnly('development: every SAP service reported in plain words, admin only', async () => {
+  test('every integration reported in plain words, admin only', async () => {
     expect((await T.axios.get('/health/integrations', as('asha'))).status).toBe(403);
     const r = await T.axios.get('/health/integrations', as('admin'));
     expect(r.status).toBe(200);
     expect(r.data.summary).toMatch(/^\d+ connected, \d+ on fallback, \d+ needs? attention\.$/);
-    expect(item(r, 'SAP HANA Cloud')).toMatchObject({ status: 'fallback', text: expect.stringMatching(/SQLite/) });
-    expect(item(r, 'HANA spatial distances')).toMatchObject({ status: 'fallback', mode: 'haversine' });
-    expect(item(r, 'SAP XSUAA (login and roles)').status).toBe('fallback');
+    expect(item(r, 'Database')).toMatchObject({ status: 'connected', text: expect.stringMatching(/SQLite/) });
     expect(item(r, 'SAP Build Process Automation')).toMatchObject({ status: 'fallback', mode: 'cap' });
-    expect(item(r, 'SAP AI Core (generative AI hub)')).toMatchObject({ status: 'fallback', mode: 'none' });
-    expect(item(r, 'SAP Destination service').status).toBe('fallback');
+    expect(item(r, 'SAP Alert Notification')).toMatchObject({ status: 'fallback', mode: 'off' });
+    expect(item(r, 'AI (LLM)')).toMatchObject({ status: 'fallback', mode: 'none' });
+    expect(item(r, 'SAP Business Accelerator Hub (sandbox)')).toMatchObject({ status: 'fallback', mode: 'fixture' });
+    expect(item(r, 'OpenRouteService (roads)')).toMatchObject({ status: 'fallback', mode: 'haversine' });
     expect(item(r, 'OR-Tools ranking service')).toMatchObject({ status: 'fallback', mode: 'greedy' });
-    expect(JSON.stringify(r.data)).not.toMatch(/test-client-secret|test-pairing-secret|test-salt|test-token-store-key/); // values only, never secrets
+    expect(JSON.stringify(r.data)).not.toMatch(/test-client-secret|test-pairing-secret|test-salt|test-token-encryption-key/); // values only, never secrets
   });
 
-  btpOnly('APPROVAL_MODE=bpa without BPA settings: misconfigured, but requests and approvals still work', async () => {
+  test('APPROVAL_MODE=bpa without BPA settings: misconfigured, but requests and approvals still work', async () => {
     await ingestH1();
     await withEnv({ APPROVAL_MODE: 'bpa' }, async () => {
       const r = await T.axios.get('/health/integrations', as('admin'));
@@ -129,13 +127,39 @@ describe('integration switches and GET /health/integrations', () => {
     });
   });
 
-  btpOnly('LLM_PROVIDER=aicore without key or model: misconfigured, and every LLM feature falls back', async () => {
+  test('LLM_PROVIDER=aicore without key or model: misconfigured, and every LLM feature falls back', async () => {
     await withEnv({ LLM_PROVIDER: 'aicore', AICORE_MODEL_NAME: '', AICORE_SERVICE_KEY_PATH: './no-such-key.json' }, async () => {
       expect(llm.enabled()).toBe(false);
       const r = await T.axios.get('/health/integrations', as('admin'));
-      expect(item(r, 'SAP AI Core (generative AI hub)')).toMatchObject({ status: 'misconfigured', text: expect.stringMatching(/AICORE_MODEL_NAME.*missing.*keeps working/) });
+      expect(item(r, 'AI (LLM)')).toMatchObject({ status: 'misconfigured', mode: 'aicore', text: expect.stringMatching(/AICORE_MODEL_NAME.*missing.*keeps working/) });
       expect((await act('hari', 'upload-photo', { imageBase64: IMG })).data.code).toBe('LLM_DISABLED');
       expect(await cds.tx(() => notes.writeTransferNote(COLD))).toMatch(/^Trastuzumab 440 mg/);
     });
+  });
+
+  test('SAP Alert Notification: alerts go to its producer API; without client id/secret misconfigured, in-app alerts still work', async () => {
+    const notify = require('../srv/lib/notify');
+    const http = require('http');
+    const seen = [];
+    const srv = http.createServer((req, res) => { let b = ''; req.on('data', d => (b += d)); req.on('end', () => { seen.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(b) }); res.writeHead(201).end('{}'); }); });
+    await new Promise(r => srv.listen(0, r));
+    const url = `http://localhost:${srv.address().port}`;
+    try {
+      await withEnv({ ALERT_NOTIFICATION_URL: url, ALERT_NOTIFICATION_CLIENT_ID: 'an-client', ALERT_NOTIFICATION_CLIENT_SECRET: 'an-secret' }, async () => {
+        expect(notify.channel()).toBe('alert-notification');
+        await cds.tx(() => notify.notify({ hospital: 'H1', kind: 'RECALL', severity: 'HIGH', message: 'Synthetic recall for Alert Notification' }));
+        await new Promise(r => setTimeout(r, 100));
+        expect(seen[0]).toMatchObject({ url: '/cf/producer/v1/resource-events', auth: 'Basic ' + Buffer.from('an-client:an-secret').toString('base64'), body: { eventType: 'MediLinkRECALL', severity: 'ERROR', body: 'Synthetic recall for Alert Notification' } });
+        expect(item(await T.axios.get('/health/integrations', as('admin')), 'SAP Alert Notification')).toMatchObject({ status: 'connected' });
+      });
+      await withEnv({ ALERT_NOTIFICATION_URL: url, ALERT_NOTIFICATION_CLIENT_ID: '', ALERT_NOTIFICATION_CLIENT_SECRET: '' }, async () => {
+        const r = await T.axios.get('/health/integrations', as('admin'));
+        expect(item(r, 'SAP Alert Notification')).toMatchObject({ status: 'misconfigured', text: expect.stringMatching(/ALERT_NOTIFICATION_CLIENT_ID and ALERT_NOTIFICATION_CLIENT_SECRET are missing/) });
+        expect(JSON.stringify(r.data)).not.toMatch(/an-secret/);
+        const row = await cds.tx(() => notify.notify({ hospital: 'H1', kind: 'RECALL', message: 'Synthetic recall, no credentials' }));
+        expect(row.kind).toBe('RECALL');
+        expect(seen.length).toBe(1); // nothing sent without credentials
+      });
+    } finally { srv.close(); }
   });
 });

@@ -1,10 +1,11 @@
 'use strict';
 /*
  * Stock-register photo for clinics with nothing digital (PRD section 16, FR-04).
- *   1. preview: the image goes to SAP AI Core (SAP Cloud SDK for AI) which returns a transcription + rows;
+ *   1. preview: the image goes to the LLM (lib/llm.js: OpenAI-compatible API or SAP AI Core) which returns a transcription + rows;
  *      a row is kept only if its batch number is visible in that transcription (same guard as the alert parser).
  *      Nothing is saved to stock: the rows wait in PhotoPreviews for the pharmacist.
- *   2. confirm: the pharmacist confirms the preview and the rows go through the normal ingest path (source SHEET).
+ *   2. confirm: the pharmacist confirms the preview and the rows go through the normal ingest path (source SHEET),
+ *      merged into the sheet stock: lots on the page are replaced, the others stay.
  * LLM off -> LLM_DISABLED; the sheet upload keeps working.
  */
 const cds = require('@sap/cds');
@@ -24,7 +25,7 @@ const PROMPT = [
 ].join('\n');
 
 async function preview(hospitalId, imageBase64, mimeType, actor) {
-  if (!llm.enabled()) throw err(409, 'LLM_DISABLED', 'Photo reading needs the LLM (LLM_PROVIDER=aicore); upload a stock sheet instead');
+  if (!llm.enabled()) throw err(409, 'LLM_DISABLED', 'Photo reading needs the LLM (LLM_PROVIDER); upload a stock sheet instead');
   const image = String(imageBase64 || '').replace(/^data:[^;]+;base64,/, '');
   if (!image) throw err(400, 'IMAGE_REQUIRED', 'No image');
   const reply = await llm.vision(PROMPT, image, mimeType || 'image/jpeg');
@@ -47,7 +48,7 @@ async function confirm(hospitalId, previewId, actor) {
   const p = previewId && await SELECT.one.from('medilink.PhotoPreviews').where({ ID: previewId, hospital_ID: hospitalId });
   if (!p || p.usedAt || Date.now() - new Date(p.createdAt).getTime() > PREVIEW_HOURS * 3600000) throw err(404, 'PREVIEW_NOT_FOUND', 'Preview unknown, used or expired');
   const rows = JSON.parse(p.rows);
-  const ingested = await ingestSnapshot(hospitalId, 'SHEET', { lots: rows }, { actor });
+  const ingested = await ingestSnapshot(hospitalId, 'SHEET', { lots: rows }, { actor, merge: true }); // one page: keep the rest of the sheet stock
   await UPDATE('medilink.PhotoPreviews').set({ usedAt: new Date().toISOString() }).where({ ID: previewId });
   await audit.log(actor, 'PHOTO_CONFIRMED', { hospital: hospitalId, preview: previewId, lots: ingested.lots, skipped: ingested.skipped });
   return { rows: rows.length, ingested };

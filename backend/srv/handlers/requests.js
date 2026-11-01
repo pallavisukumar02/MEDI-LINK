@@ -52,11 +52,6 @@ module.exports = cds.service.impl(function () {
 
   this.on('cancelRequest', wrap(async req => {
     const r = await ownRequest(req, req.data.request);
-    const active = await SELECT.from('medilink.Transfers').where({ request_ID: r.ID, status: { in: ['IN_TRANSIT', 'DELIVERED'] } });
-    if (active.length) return req.reject(409, 'REQUEST_IN_FLIGHT: stock is already moving');
-    await UPDATE('medilink.Transfers').set({ status: 'CANCELLED' }).where({ request_ID: r.ID, status: { in: ['PENDING_SUPPLIER', 'PENDING_APPROVAL', 'PENDING_SECOND_APPROVAL', 'APPROVED', 'ASSIGNED'] } });
-    await UPDATE('medilink.Requests').set({ status: 'CANCELLED' }).where({ ID: r.ID });
-    await audit.log(req.user.id, 'REQUEST_CANCELLED', { request: r.ID });
-    return { request: r.ID, status: 'CANCELLED' };
+    return workflow.cancelRequest(r.ID, req.user.id);
   }));
 });

@@ -91,6 +91,29 @@ def test_llm_rewrite_must_keep_every_number():
     assert explain.llm_rewrite(t, {}) is None  # LLM_PROVIDER=none -> template stays
 
 
+def test_llm_rewrite_openai_compatible(monkeypatch):
+    import explain
+    t = "Nearest eligible hospital: X (4.2 km, ~31 min). One transfer covers all 16 doses."
+    seen = {}
+
+    class Res:
+        def __init__(self, content): self.content = content
+        def raise_for_status(self): pass
+        def json(self): return {"choices": [{"message": {"content": self.content}}]}
+
+    def fake_post(url, headers=None, json=None, timeout=None, answer="X: 4.2 km, ~31 min; one transfer covers all 16 doses."):
+        seen.update(url=url, headers=headers, model=json["model"])
+        return Res(seen.get("answer", answer))
+
+    monkeypatch.setattr(explain.httpx, "post", fake_post)
+    for k, v in {"LLM_PROVIDER": "openai-compatible", "LLM_BASE_URL": "http://llm.test/v1/", "LLM_MODEL": "m1", "LLM_API_KEY": "k1"}.items():
+        monkeypatch.setenv(k, v)
+    assert explain.llm_rewrite(t, {}) == "X: 4.2 km, ~31 min; one transfer covers all 16 doses."
+    assert seen["url"] == "http://llm.test/v1/chat/completions" and seen["headers"] == {"Authorization": "Bearer k1"} and seen["model"] == "m1"
+    seen["answer"] = "X: 5 km away; covers all 16 doses."  # a changed number -> template stays
+    assert explain.llm_rewrite(t, {}) is None
+
+
 def test_rank_requires_token_when_configured(monkeypatch):
     from fastapi.testclient import TestClient
     import app as matcher_app
@@ -101,3 +124,17 @@ def test_rank_requires_token_when_configured(monkeypatch):
     assert c.post("/rank", json=body, headers={"X-Matcher-Token": "s3cret"}).status_code == 200
     monkeypatch.delenv("MATCHER_TOKEN")
     assert c.post("/rank", json=body).status_code == 200
+
+
+def test_production_requires_token_and_plans_are_capped(monkeypatch):
+    from fastapi.testclient import TestClient
+    import app as matcher_app
+    c = TestClient(matcher_app.app)
+    cands = [{"lotId": f"L{i}", "hospitalId": f"H{i}", "maxQty": 1, "distanceKm": i} for i in range(1, 12)]
+    monkeypatch.setenv("NODE_ENV", "production")
+    monkeypatch.delenv("MATCHER_TOKEN", raising=False)
+    assert c.post("/rank", json={"qty": 1, "candidates": cands}).status_code == 503  # fails closed without a token
+    monkeypatch.setenv("MATCHER_TOKEN", "s3cret")
+    r = c.post("/rank", json={"qty": 1, "candidates": cands, "maxPlans": 1000}, headers={"X-Matcher-Token": "s3cret"})
+    assert r.status_code == 200 and len(r.json()["plans"]) == matcher_app.MAX_PLANS
+    assert c.post("/rank", json={"qty": 1, "candidates": cands, "maxPlans": 0}, headers={"X-Matcher-Token": "s3cret"}).status_code == 422

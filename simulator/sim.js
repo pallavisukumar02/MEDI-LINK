@@ -1,7 +1,7 @@
 'use strict';
 /*
- * Delivery-partner telemetry simulator: pure logic (positions, temperatures, the one deliberate excursion).
- * index.js wires it to the CAP DeliveryService. ALL readings are SYNTHETIC.
+ * Courier simulator: pure logic (positions, temperatures, the one deliberate excursion).
+ * index.js wires it to the courier links (/courier/*). ALL readings are SYNTHETIC.
  */
 
 /** Point at fraction f (0..1) along a polyline of {lat,long} points, by segment length. */

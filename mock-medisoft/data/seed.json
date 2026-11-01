@@ -201,6 +201,34 @@
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H1-RITU500-2"
+        },
+        {
+          "itemCode": "D-GEMC1G",
+          "generic": "Gemcitabine",
+          "strength": "1 g",
+          "form": "Powder for injection",
+          "brand": "Gemzora",
+          "manufacturer": "Medora Labs (synthetic)",
+          "batch": "GEMC24S997",
+          "qty": 3,
+          "expiry": "2026-10-29",
+          "storage": "AMBIENT",
+          "sealed": true,
+          "lotRef": "H1-GEMC1G-X"
+        },
+        {
+          "itemCode": "D-DOXO50",
+          "generic": "Doxorubicin",
+          "strength": "50 mg/25 mL",
+          "form": "Injection",
+          "brand": "Doxorin",
+          "manufacturer": "Kaveri Pharma (synthetic)",
+          "batch": "DOXO24S203",
+          "qty": 3,
+          "expiry": "2027-05-20",
+          "storage": "COLD",
+          "sealed": true,
+          "lotRef": "H1-DOXO50-X"
         }
       ],
       "schedule": [
@@ -975,6 +1003,62 @@
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H5-RITU500-1"
+        },
+        {
+          "itemCode": "D-TRAS440",
+          "generic": "Trastuzumab",
+          "strength": "440 mg",
+          "form": "Powder for injection",
+          "brand": "Herzuma-S",
+          "manufacturer": "Nandi Biologics (synthetic)",
+          "batch": "NB24T019",
+          "qty": 1,
+          "expiry": "2026-10-29",
+          "storage": "COLD",
+          "sealed": true,
+          "lotRef": "H5-TRAS-X"
+        },
+        {
+          "itemCode": "D-GEMC1G",
+          "generic": "Gemcitabine",
+          "strength": "1 g",
+          "form": "Powder for injection",
+          "brand": "Gemzora",
+          "manufacturer": "Medora Labs (synthetic)",
+          "batch": "GEMC24S085",
+          "qty": 4,
+          "expiry": "2027-01-25",
+          "storage": "AMBIENT",
+          "sealed": true,
+          "lotRef": "H5-GEMC1G-X"
+        },
+        {
+          "itemCode": "D-RITU500",
+          "generic": "Rituximab",
+          "strength": "500 mg/50 mL",
+          "form": "Injection",
+          "brand": "Rituvia",
+          "manufacturer": "Nandi Biologics (synthetic)",
+          "batch": "RITU24S025",
+          "qty": 2,
+          "expiry": "2026-11-26",
+          "storage": "COLD",
+          "sealed": true,
+          "lotRef": "H5-RITU500-X"
+        },
+        {
+          "itemCode": "D-BORT2",
+          "generic": "Bortezomib",
+          "strength": "2 mg",
+          "form": "Powder for injection",
+          "brand": "Bortenix",
+          "manufacturer": "Deccan Biogenerics (synthetic)",
+          "batch": "BORT24S005",
+          "qty": 2,
+          "expiry": "2026-11-06",
+          "storage": "AMBIENT",
+          "sealed": true,
+          "lotRef": "H5-BORT2-X"
         }
       ],
       "schedule": [

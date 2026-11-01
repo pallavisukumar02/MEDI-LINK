@@ -31,7 +31,7 @@ async function evaluate(request, { excludeHospitals = [], now = new Date() } = {
   const receiver = hospitals[request.hospital_ID];
   const [licences, partners, closures, reserved] = await Promise.all([licenceMap(), SELECT.from('medilink.DeliveryPartners'), SELECT.from('medilink.RoadClosures').where({ active: true }), coverdb.reservations()]);
 
-  const candidatesLots = ctx.lots.filter(l => sameGeneric.includes(l.drug_ID) && l.hospital_ID !== receiver.ID && Number(l.quantity) > 0 && !excludeHospitals.includes(l.hospital_ID));
+  const candidatesLots = ctx.lots.filter(l => sameGeneric.includes(l.drug_ID) && l.hospital_ID !== receiver.ID && Number(l.quantity) > 0 && !excludeHospitals.includes(l.hospital_ID) && hospitals[l.hospital_ID]?.connected); // disconnected = consent withdrawn: its last stock is frozen
   const routeCache = {};
   const straight = await geo.distancesKm(receiver, [...new Set(candidatesLots.map(l => l.hospital_ID))].map(id => hospitals[id]));
   const candidates = [], exclusions = [];

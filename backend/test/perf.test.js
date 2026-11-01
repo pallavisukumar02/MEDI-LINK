@@ -5,7 +5,7 @@
  * Timings are end-to-end HTTP calls against the in-memory SQLite test server; numbers go to the console
  * (copied into the README "Performance" section).
  */
-require('./helpers/env')({ MATCHER_URL: 'http://localhost:5113', MATCHER_FALLBACK_ENABLED: 'false' });
+require('./helpers/env')({ MATCHER_FALLBACK_ENABLED: 'false' });
 const procs = require('./helpers/procs');
 const cds = require('@sap/cds');
 const T = cds.test(__dirname + '/..');
@@ -26,8 +26,9 @@ async function timed(label, fn, runs = 3) {
 }
 
 beforeAll(async () => {
-  matcher = await procs.startMatcher(5113);
+  matcher = await procs.startMatcher();
   if (!matcher) throw new Error('Python with ortools/fastapi/uvicorn is required for the performance test');
+  process.env.MATCHER_URL = matcher.url; require('../srv/lib/config').reload();
   await ingestH1();
   const x = gen.scale(gen.anchorDate(), 50);
   await cds.tx(async () => {

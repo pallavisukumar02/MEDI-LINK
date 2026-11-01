@@ -4,7 +4,7 @@
  * with the real mock MediSoft OAuth server and the real OR-Tools matcher as child processes.
  * No SAP credentials are used.
  */
-require('./helpers/env')({ MEDISOFT_BASE_URL: 'http://localhost:4111', MATCHER_URL: 'http://localhost:5111', MATCHER_FALLBACK_ENABLED: 'false' });
+require('./helpers/env')({ MATCHER_FALLBACK_ENABLED: 'false' });
 const procs = require('./helpers/procs');
 const cds = require('@sap/cds');
 const T = cds.test(__dirname + '/..');
@@ -14,13 +14,16 @@ const ws = require('../srv/lib/ws');
 const as = user => ({ auth: { username: user, password: 'demo' } });
 const get = (url, user) => T.axios.get(url, as(user));
 const post = (url, body, user) => T.axios.post(url, body, as(user));
+const courier = (url, body, token) => T.axios.post(url, body, { headers: { Authorization: 'Courier ' + token } }); // the rider's phone / logger
+const linkOf = async transfer => (await get('/admin/courier-links', 'admin')).data.links.find(l => l.transferId === transfer).token;
 const events = [];
 let medisoft, matcher;
 
 beforeAll(async () => {
-  medisoft = await procs.startMedisoft(4111);
-  matcher = await procs.startMatcher(5111);
+  medisoft = await procs.startMedisoft();
+  matcher = await procs.startMatcher();
   if (!matcher) throw new Error('Python with ortools/fastapi/uvicorn is required for the e2e test (pip install -r matcher/requirements.txt)');
+  Object.assign(process.env, { MEDISOFT_BASE_URL: medisoft.url, MATCHER_URL: matcher.url }); require('../srv/lib/config').reload();
   ws.listeners.add((event, data) => events.push({ event, data }));
 }, 60000);
 afterAll(() => procs.stop(medisoft, matcher));
@@ -31,9 +34,9 @@ async function oauthAllow(authorizeUrl, username) {
   const form = o => new URLSearchParams(o).toString();
   const H = { 'Content-Type': 'application/x-www-form-urlencoded' };
   const q = Object.fromEntries(u.searchParams);
-  const login = await fetch('http://localhost:4111/oauth/login', { method: 'POST', headers: H, body: form({ ...q, username, password: 'medisoft-demo' }), redirect: 'manual' });
+  const login = await fetch(`${medisoft.url}/oauth/login`, { method: 'POST', headers: H, body: form({ ...q, username, password: 'medisoft-demo' }), redirect: 'manual' });
   const cookie = login.headers.get('set-cookie').split(';')[0];
-  const consent = await fetch('http://localhost:4111/oauth/consent', { method: 'POST', headers: { ...H, cookie }, body: form({ ...q, decision: 'allow' }), redirect: 'manual' });
+  const consent = await fetch(`${medisoft.url}/oauth/consent`, { method: 'POST', headers: { ...H, cookie }, body: form({ ...q, decision: 'allow' }), redirect: 'manual' });
   const cb = new URL(consent.headers.get('location'));
   return T.axios.get(`/oauth/medisoft/callback${cb.search}`); // the "browser" follows the redirect to CAP
 }
@@ -50,9 +53,11 @@ describe('PRD section 18 demo script', () => {
     expect(r.status).toBe(200);
     expect(r.data.message).toMatch(/City Cancer Hospital, Jayanagar · Licence valid till 2028 · Your stock is in MediSoft HIS/);
     expect(r.data.next).toBe('OAUTH_ALLOW');
-    const cb = await oauthAllow(r.data.authorizeUrl, 'pharm.jayanagar');
+    const cb = await oauthAllow(r.data.authorizeUrl, 'pharm.jayanagar'); // mock MediSoft requires PKCE S256
     expect(cb.status).toBe(200);
     expect(cb.data).toMatch(/Your board will be ready/);
+    expect(cb.data).toContain(',"http://localhost:4004")'); // postMessage only to MediLink's own origin
+    expect(cb.data).not.toContain("'*'");
     const st = await get('/onboarding/status', 'asha');
     expect(st.data.connected).toBe(true);
     expect(st.data.consents[0]).toMatchObject({ provider: 'MEDISOFT', scopes: 'stock.read schedule.read' });
@@ -126,11 +131,12 @@ describe('PRD section 18 demo script', () => {
   });
 
   test('5. road flooded: route re-plans; temperature spike on another shipment raises a quarantine alert', async () => {
-    const pk = await post('/odata/v4/delivery/pickupScan', { transfer: state.transfer, batchNo: 'SOL24B077, SOL25A015', sealId: 'SEAL-9001', loggerId: 'LOG-9001' }, 'partner');
-    expect(pk.data.status).toBe('IN_TRANSIT');
+    state.token = await linkOf(state.transfer); // the courier's link, minted when the partner was assigned
+    const pk = await courier('/courier/pickup', { batchNo: 'SOL24B077, SOL25A015', sealId: 'SEAL-9001', loggerId: 'LOG-9001' }, state.token);
+    expect(pk.data.job.status).toBe('IN_TRANSIT');
     const h1 = { lat: 12.9299, long: 77.5826 }, h5 = { lat: 12.9255, long: 77.5468 };
     for (const f of [0.1, 0.3]) {
-      const tl = await post('/odata/v4/delivery/telemetry', { transfer: state.transfer, lat: h5.lat + (h1.lat - h5.lat) * f, long: h5.long + (h1.long - h5.long) * f, temperatureC: 24.5, sealStatus: 'INTACT' }, 'sim');
+      const tl = await courier('/courier/location', { lat: h5.lat + (h1.lat - h5.lat) * f, long: h5.long + (h1.long - h5.long) * f, temperatureC: 24.5, sealStatus: 'INTACT' }, state.token);
       expect(tl.data).toMatchObject({ accepted: true, excursion: false });
     }
     const before = (await get(`/odata/v4/admin/Transfers(${state.transfer})`, 'admin')).data;
@@ -144,8 +150,8 @@ describe('PRD section 18 demo script', () => {
 
     // seeded cold-chain shipment H2 -> H3 (trastuzumab 2-8 °C)
     const cold = 'a0000000-0000-4000-8000-000000000001';
-    const ex = await post('/odata/v4/delivery/telemetry', { loggerId: 'LOG-7781', lat: 12.95, long: 77.69, temperatureC: 11.4 }, 'sim');
-    expect(ex.data).toMatchObject({ excursion: true, transferId: cold });
+    const ex = await courier('/courier/location', { lat: 12.95, long: 77.69, temperatureC: 11.4 }, await linkOf(cold));
+    expect(ex.data).toMatchObject({ excursion: true });
     const ev = events.find(e => e.event === 'excursion');
     expect(ev.data).toMatchObject({ transferId: cold, quarantineSuggested: true, range: '2-8' });
     const n = await get("/odata/v4/admin/Notifications?$filter=kind eq 'EXCURSION'", 'admin');
@@ -153,7 +159,7 @@ describe('PRD section 18 demo script', () => {
   });
 
   test('6. arrival: proof of condition passes, coverage turns green, ledger shows the loan, audit chain verifies', async () => {
-    await post('/odata/v4/delivery/telemetry', { transfer: state.transfer, lat: 12.9295, long: 77.5800, temperatureC: 25.1 }, 'sim');
+    await courier('/courier/location', { lat: 12.9295, long: 77.5800, temperatureC: 25.1 }, state.token);
     const bad = await post('/odata/v4/receipt/arrivalScan', { transfer: state.transfer, batchNo: 'SOL24B077,SOL25A015', sealIntact: false, qtyReceived: 16, decision: 'ACCEPT' }, 'asha');
     expect(bad.data.error.code).toBe('PROOF_OF_CONDITION_FAILED');
     const ok = await post('/odata/v4/receipt/arrivalScan', { transfer: state.transfer, batchNo: 'SOL24B077,SOL25A015', sealIntact: true, qtyReceived: 16, decision: 'ACCEPT' }, 'asha');
@@ -169,7 +175,7 @@ describe('PRD section 18 demo script', () => {
     expect(v.status).toBe(200);
     expect(v.data.ok).toBe(true);
     const actions = (await get('/audit/Entries?$orderby=seq', 'admin')).data.map(e => e.action);
-    for (const a of ['CONSENT_GRANTED', 'REQUEST_CREATED', 'RULES_APPLIED', 'PLAN_CHOSEN', 'SUPPLIER_ACCEPTED', 'LEDGER_LOAN_RECORDED', 'APPROVED', 'PARTNER_ASSIGNED', 'PICKUP', 'ROUTE_REPLANNED', 'EXCURSION', 'ARRIVAL'])
+    for (const a of ['CONSENT_GRANTED', 'REQUEST_CREATED', 'RULES_APPLIED', 'PLAN_CHOSEN', 'SUPPLIER_ACCEPTED', 'LEDGER_LOAN_RECORDED', 'APPROVED', 'PARTNER_ASSIGNED', 'COURIER_LINK_ISSUED', 'PICKUP', 'ROUTE_REPLANNED', 'EXCURSION', 'ARRIVAL'])
       expect(actions).toContain(a);
   });
 

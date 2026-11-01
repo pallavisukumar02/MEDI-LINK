@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * npm run dev  ->  starts the whole MediLink prototype locally, no SAP credentials needed:
- *   cap        CAP backend, development profile (SQLite in-memory, mocked users)  :4004
- *   matcher    Python FastAPI + OR-Tools                                         :5001
- *   medisoft   mock MediSoft HIS (OAuth 2.0 server + read APIs)                  :4100
- *   simulator  delivery-partner telemetry (GPS + temperature)
+ * npm run dev  ->  starts the whole MediLink prototype locally (synthetic data):
+ *   cap        CAP backend: SQLite file backend/db/medilink.sqlite, MediLink accounts  :4004
+ *   matcher    Python FastAPI + OR-Tools                                             :5001
+ *   medisoft   mock MediSoft HIS (OAuth 2.0 server + read APIs)                      :4100
+ *   simulator  courier rider + temperature logger, through each delivery's courier link
+ * On a fresh clone it first creates backend/.env from backend/.env.example with fresh random secrets (file mode 0600,
+ * never printed; DEMO_PASSWORD=demo) and, if missing, the database with the synthetic seed and demo users (db:init).
  * Ctrl+C stops everything. Pass --no-sim / --no-matcher to skip a process.
- *
- * npm run start:standalone (= --standalone [--pg]) starts the same processes with CAP in the standalone profile:
- * persistent database (SQLite file from npm run db:init, or PostgreSQL with --pg) and real MediLink logins.
  * Ports come from PORT (CAP) and MATCHER_URL (matcher). Never prints environment values.
  */
 const { spawn, spawnSync } = require('child_process');
@@ -18,21 +17,24 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const args = new Set(process.argv.slice(2));
 const win = process.platform === 'win32';
-// read backend/.env without exporting it: mock-medisoft would take its PORT (CAP's) as its own
 const envFile = path.join(ROOT, 'backend', '.env');
-const fileEnv = fs.existsSync(envFile) ? require(path.join(ROOT, 'backend', 'node_modules', 'dotenv')).parse(fs.readFileSync(envFile)) : {};
+
+if (process.env.NODE_ENV === 'production') { console.error('\n  npm run dev is for development. In production use: npm start\n'); process.exit(1); }
+require('./dev-env').ensureDevEnv();
+// read backend/.env without exporting it: mock-medisoft would take its PORT (CAP's) as its own
+const fileEnv = require(path.join(ROOT, 'backend', 'node_modules', 'dotenv')).parse(fs.readFileSync(envFile));
 const env = { ...fileEnv, ...process.env };
-const standaloneMode = args.has('--standalone');
-const profile = !standaloneMode ? 'development' : args.has('--pg') || env.CDS_PROFILE === 'standalone-pg' ? 'standalone-pg' : 'standalone';
 const capPort = Number(env.PORT) || 4004;
 const matcherPort = Number(new URL(env.MATCHER_URL || 'http://localhost:5001').port) || 5001;
 
-function checkStandalone() {
-  const { missing } = require(path.join(ROOT, 'backend', 'srv', 'lib', 'standalone'));
-  const hard = missing(profile, env).filter(m => m.hard);
-  if (hard.length) { console.error(`\n  Standalone mode needs, in backend/.env:\n${hard.map(m => `   - ${m.name}: ${m.why}`).join('\n')}\n  Run npm run env:check for the full list.\n`); process.exit(1); }
+function prepare() {
+  const hard = require(path.join(ROOT, 'backend', 'srv', 'lib', 'config')).missing(env).filter(m => m.hard);
+  if (hard.length) { console.error(`\n  MediLink needs, in backend/.env:\n${hard.map(m => `   - ${m.name}: ${m.why}`).join('\n')}\n  Run npm run env:check for the full list.\n`); process.exit(1); }
   const db = path.resolve(ROOT, 'backend', env.CDS_REQUIRES_DB_CREDENTIALS_URL || 'db/medilink.sqlite');
-  if (profile === 'standalone' && !fs.existsSync(db)) { console.error('\n  No database yet. Run: npm run db:init\n'); process.exit(1); }
+  if (!fs.existsSync(db)) {
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'db.js'), 'init'], { stdio: 'inherit' });
+    if (r.status !== 0) process.exit(r.status ?? 1);
+  }
 }
 
 function python() {
@@ -75,30 +77,25 @@ process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
 (async () => {
-  if (standaloneMode) checkStandalone();
-  // Refresh the date-relative synthetic seed once, before anything reads it.
+  // Refresh the date-relative synthetic seed once, before anything reads it (db:init loads it into a new database).
   try { const seed = require(path.join(ROOT, 'seed', 'generate')); if (seed.isStale()) seed.run({ quiet: true }); } catch (e) { console.warn('[dev] seed refresh skipped:', e.message); }
+  prepare();
 
   run('medisoft', process.execPath, ['server.js'], path.join(ROOT, 'mock-medisoft'));
   if (!args.has('--no-matcher')) {
     const py = python();
-    if (py) run('matcher', py, ['-m', 'uvicorn', 'app:app', '--port', String(matcherPort), '--log-level', 'warning'], path.join(ROOT, 'matcher'));
+    if (py) run('matcher', py, ['-m', 'uvicorn', 'app:app', '--port', String(matcherPort), '--log-level', 'warning'], path.join(ROOT, 'matcher'), env); // backend/.env: LLM_*, AICORE_*, MATCHER_TOKEN
     else console.warn('[dev] Python with ortools/fastapi/uvicorn not found: CAP will use its built-in greedy ranking fallback. Run: pip install -r matcher/requirements.txt');
   }
   const cdsBin = path.join(ROOT, 'backend', 'node_modules', '@sap', 'cds', 'bin', 'serve.js');
-  run('cap', process.execPath, [cdsBin, '--profile', profile], path.join(ROOT, 'backend'), { CDS_ENV: profile });
+  run('cap', process.execPath, [cdsBin], path.join(ROOT, 'backend'));
 
   const up = await waitFor(`http://localhost:${capPort}/health`);
   if (!up) { console.error(`[dev] CAP did not come up on :${capPort}`); return shutdown(1); }
-  // standalone: the simulator signs in as "sim" with the demo password (HTTP Basic against MediLink accounts)
-  if (!args.has('--no-sim')) run('simulator', process.execPath, ['index.js'], path.join(ROOT, 'simulator'), standaloneMode ? { SIM_USER: 'sim', SIM_PASSWORD: env.DEMO_PASSWORD || '' } : {});
-  if (standaloneMode) {
-    console.log(`\n  MediLink standalone stack is up (${profile}: no SAP BTP, persistent database, real logins; synthetic data):`);
-    console.log(`    CAP       http://localhost:${capPort}   (sign in with POST /auth/login: asha, ravi, meera, kiran, partner, admin ... password = DEMO_PASSWORD)`);
-  } else {
-    console.log('\n  MediLink dev stack is up (synthetic data, no SAP credentials):');
-    console.log(`    CAP       http://localhost:${capPort}   (users: asha, ravi, meera, kiran, partner, admin ... password "demo")`);
-  }
+  // the simulator lists the courier links as "admin" with the demo password (HTTP Basic), then acts through each link
+  if (!args.has('--no-sim')) run('simulator', process.execPath, ['index.js'], path.join(ROOT, 'simulator'), { SIM_USER: 'admin', SIM_PASSWORD: env.DEMO_PASSWORD || '' });
+  console.log('\n  MediLink dev stack is up (synthetic data; database backend/db/medilink.sqlite, npm run db:reset starts it again):');
+  console.log(`    CAP       http://localhost:${capPort}   (users: asha, ravi, meera, kiran, admin ... password = DEMO_PASSWORD, "demo" by default; couriers use a link)`);
   console.log('    MediSoft  http://localhost:4100');
   console.log(`    Matcher   http://localhost:${matcherPort}/health`);
   console.log('    Demo      npm run demo   (runs the PRD section 18 script against this stack)\n');

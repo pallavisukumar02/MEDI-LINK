@@ -4,7 +4,9 @@ const cds = require('@sap/cds');
 const crypto = require('crypto');
 const audit = require('./audit');
 const coverdb = require('./coverdb');
-const { notify } = require('./notify');
+const monitor = require('./monitor');
+const { notify, sendDigest } = require('./notify');
+const LOG = cds.log('ingest');
 
 const HASHED = /^[a-f0-9]{64}$/;
 const STORAGE = { AMBIENT: 'AMBIENT', ROOM: 'AMBIENT', RT: 'AMBIENT', COLD: 'COLD', FRIDGE: 'COLD', '2-8': 'COLD', '2-8C': 'COLD', FROZEN: 'FROZEN', FREEZER: 'FROZEN' };
@@ -35,10 +37,28 @@ const parseBool = v => (typeof v === 'boolean' ? v : /^(y|yes|true|1|sealed|inta
 const storageOf = (v, drug) => STORAGE[String(v ?? '').toUpperCase().replace(/\s|°/g, '')] || drug?.storageClass || 'AMBIENT';
 
 /**
+ * One row per lot ID (F6): a feed may list a lot more than once (one row per bin, a batch written twice on a sheet).
+ * Rows of the same lot are summed (earliest expiry wins); an opened part keeps its own row so the sealed part stays usable.
+ */
+function mergeLots(lots) {
+  const groups = new Map();
+  for (const l of lots) {
+    const k = `${l.ID}|${l.sealed}`;
+    const g = groups.get(k);
+    if (!g) groups.set(k, { ...l });
+    else { g.quantity += l.quantity; if (l.expiryDate < g.expiryDate) g.expiryDate = l.expiryDate; }
+  }
+  const out = [...groups.values()];
+  const sealed = new Set(out.filter(l => l.sealed).map(l => l.ID));
+  return out.map(l => (!l.sealed && sealed.has(l.ID) ? { ...l, ID: `${l.ID}-opened` } : l));
+}
+
+/**
  * Replace the hospital's snapshot for `source`.
  * payload = { lots?: [...], bookings?: [...] }  (bookings omitted => bookings untouched)
+ * merge: true = only the lots in the payload are replaced, the source's other lots stay (a photo of one register page, F13).
  */
-async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' + source.toLowerCase() } = {}) {
+async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' + source.toLowerCase(), merge = false } = {}) {
   const hospital = await SELECT.one.from('medilink.Hospitals').where({ ID: hospitalId });
   if (!hospital) throw new IngestError(404, 'HOSPITAL_UNKNOWN', `Unknown hospital ${hospitalId}`);
   const drugs = await coverdb.drugsById();
@@ -50,7 +70,7 @@ async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' +
     if (!HASHED.test(String(b.patientRef || ''))) throw new IngestError(422, 'PATIENT_REF_NOT_HASHED', 'Every booking patientRef must be a SHA-256 hex digest hashed at source; nothing was stored');
   }
 
-  const lots = [];
+  let lots = [];
   for (const it of payload.lots || []) {
     const drug = resolveDrug(it, drugs);
     const qty = Number(it.quantity ?? it.qty);
@@ -66,6 +86,8 @@ async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' +
     });
   }
 
+  lots = mergeLots(lots);
+
   const bookings = [];
   for (const b of payload.bookings || []) {
     const drug = resolveDrug(b, drugs);
@@ -77,9 +99,10 @@ async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' +
   // Keep MediLink-side quarantine decisions across syncs
   const existing = await SELECT.from('medilink.Lots').columns('ID', 'quarantined').where({ hospital_ID: hospitalId, source });
   const quarantined = new Set(existing.filter(l => l.quarantined).map(l => l.ID));
-  if (payload.lots) {
-    await DELETE.from('medilink.Lots').where({ hospital_ID: hospitalId, source });
+  if (payload.lots && (!merge || lots.length)) {
+    await DELETE.from('medilink.Lots').where({ hospital_ID: hospitalId, source, ...(merge ? { ID: { in: lots.map(l => l.ID) } } : {}) });
     if (lots.length) await INSERT.into('medilink.Lots').entries(lots.map(l => ({ ...l, quarantined: quarantined.has(l.ID) })));
+    if (source !== 'TRANSFER') await require('./receipt').reconcileReceived(hospitalId, lots); // received stock now in this feed: count it once
   }
   if (payload.bookings) {
     await DELETE.from('medilink.Bookings').where({ hospital_ID: hospitalId, source });
@@ -89,17 +112,21 @@ async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' +
   }
   await UPDATE('medilink.Hospitals').set({ lastSyncedAt: now, feedStale: false, connected: true }).where({ ID: hospitalId });
   await audit.log(actor, 'INGEST', { hospital: hospitalId, source, lots: payload.lots ? lots.length : null, bookings: payload.bookings ? bookings.length : null, skipped });
-  await recomputeAndAlert([hospitalId]);
+  const digest = []; // a sheet upload or connector push alerts at once: one email for its shortfalls, low stock and expiry
+  await recomputeAndAlert([hospitalId], digest);
+  // the stock update must not fail because of alerting (e.g. a parallel check raised the same alert a moment earlier)
+  await monitor.run([hospitalId], digest).catch(e => LOG.warn(`stock and expiry check failed for ${hospitalId}: ${e.message}`));
+  await sendDigest(digest);
   return { hospitalId, source, lots: lots.length, bookings: bookings.length, skipped };
 }
 
-async function recomputeAndAlert(hospitalIds) {
+async function recomputeAndAlert(hospitalIds, digest) {
   const red = await coverdb.recompute(hospitalIds);
   for (const r of red) {
     await notify({ hospital: r.hospital.ID, kind: 'SHORTFALL', severity: 'HIGH', ref: r.drug.ID, dueDate: r.cover.firstAffectedDate,
-      message: `${r.drug.genericName} ${r.drug.strength}: ${r.cover.shortfall} of ${r.cover.booked} booked doses cannot be covered in the next ${r.cover.windowDays} days (${r.cover.patientsAffected} patients affected first, from ${r.cover.firstAffectedDate})` });
+      message: `${r.drug.genericName} ${r.drug.strength}: ${r.cover.shortfall} of ${r.cover.booked} booked doses cannot be covered in the next ${r.cover.windowDays} days (${r.cover.patientsAffected} patients affected first, from ${r.cover.firstAffectedDate})` }, { digest });
   }
   return red;
 }
 
-module.exports = { ingestSnapshot, recomputeAndAlert, resolveDrug, parseDate, parseBool, storageOf, IngestError, HASHED };
+module.exports = { ingestSnapshot, recomputeAndAlert, mergeLots, resolveDrug, parseDate, parseBool, storageOf, IngestError, HASHED };

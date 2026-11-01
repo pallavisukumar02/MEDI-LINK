@@ -13,6 +13,8 @@ function guard(db) {
   db.before(['UPDATE', 'DELETE', 'UPSERT'], ENTITY, req => req.reject(405, 'AUDIT_APPEND_ONLY: the audit log is append-only'));
 }
 
+// max(seq) + 1 cannot race: @cap-js/sqlite serves every transaction from one pooled connection (pool max 1), so
+// transactions run one after another (test/concurrency.test.js); the seq primary key refuses a duplicate if that changes.
 async function log(actor, action, payload = {}) {
   const last = await SELECT.one.from(ENTITY).columns('seq', 'hash').orderBy('seq desc');
   const e = nextEntry(last, actor, action, payload);

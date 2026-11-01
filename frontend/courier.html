@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MediLink courier</title>
+<meta name="description" content="MediLink courier page for one delivery. Prototype, demo data only.">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body class="route-courier">
+<a class="skip" href="#view">Skip to content</a>
+<div id="view"><main class="c-main"><p class="muted">Loading your delivery…</p></main></div>
+<dialog class="dlg" id="dlg" aria-labelledby="dlg-title"></dialog>
+<dialog class="dlg" id="scan-dlg" aria-labelledby="scan-title"></dialog>
+<div class="toast glass" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="vendor/leaflet/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" defer></script>
+<script src="js/ui.js" defer></script>
+<script src="js/livemap.js" defer></script>
+<script src="js/courier.js" defer></script>
+</body>
+</html>

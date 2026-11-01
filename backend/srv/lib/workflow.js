@@ -37,6 +37,10 @@ async function load(id) {
   return t;
 }
 const expectStatus = (t, ...s) => { if (!s.includes(t.status)) throw wfError(409, 'INVALID_STATUS', `Transfer is ${t.status}; expected ${s.join(' or ')}`); };
+/** Conditional status change (WHERE status = expected): a concurrent double submit changes the row once, the other gets 409. */
+async function transition(id, from, set) {
+  if (!await UPDATE(T).set(set).where({ ID: id, status: { in: from } })) throw wfError(409, 'INVALID_STATUS', `Transfer is no longer ${from.join(' or ')}`);
+}
 
 /** Second sign-off risk rules: cold chain, near expiry, long route. */
 function riskReasons({ drug, lots, distanceKm, etaMin, today }) {
@@ -103,9 +107,15 @@ async function supplierReview(id) {
   };
 }
 
-async function supplierAccept(id, { qty, repaymentMode }, actor) {
+async function supplierAccept(id, { qty, repaymentMode, repaysLoan }, actor) {
   const t = await load(id);
   expectStatus(t, 'PENDING_SUPPLIER');
+  if (repaysLoan) { // the supplier owes the receiver this drug: the delivery repays that loan instead of opening a reverse one
+    const owed = await SELECT.one.from('medilink.Ledger').where({ ID: repaysLoan, status: 'OPEN', borrower_ID: t.supplier_ID, lender_ID: t.receiver_ID, drug_ID: t.drug_ID });
+    if (!owed) throw wfError(409, 'REPAYMENT_WRONG_LOAN', 'repaysLoan must be an open loan of this drug that the supplier owes the receiver');
+    if (await SELECT.one.from(T).columns('ID').where({ repaysLoan_ID: repaysLoan, status: { in: ACTIVE } })) throw wfError(409, 'REPAYMENT_ALREADY_USED', 'Another delivery already repays this loan');
+    repaymentMode = 'IN_KIND';
+  }
   if (!['IN_KIND', 'LANDED_COST'].includes(repaymentMode)) throw wfError(400, 'REPAYMENT_MODE_REQUIRED', 'repaymentMode must be IN_KIND or LANDED_COST');
   const offered = qty === undefined || qty === null ? t.qty : Number(qty);
   if (!(offered > 0) || offered > t.qty) throw wfError(400, 'INVALID_QUANTITY', `Quantity must be between 1 and ${t.qty}`);
@@ -130,12 +140,14 @@ async function supplierAccept(id, { qty, repaymentMode }, actor) {
   if (flagged.length) throw wfError(409, 'FLAGGED_BATCH', `Lot ${flagged[0].batchNo} is now flagged and can never move`);
 
   const status = 'PENDING_APPROVAL';
-  await UPDATE(T).set({ status, repaymentMode }).where({ ID: id });
-  const drug = await SELECT.one.from('medilink.Drugs').where({ ID: t.drug_ID });
-  const loan = { ID: cds.utils.uuid(), lender_ID: t.supplier_ID, borrower_ID: t.receiver_ID, drug_ID: t.drug_ID, qty: offered, landedCost: Math.round(offered * Number(drug.unitCost || 0) * 100) / 100, repaymentMode, status: 'OPEN', transfer_ID: id };
-  await INSERT.into('medilink.Ledger').entries(loan);
-  await audit.log(actor, 'SUPPLIER_ACCEPTED', { transfer: id, qty: offered, repaymentMode });
-  await audit.log(actor, 'LEDGER_LOAN_RECORDED', { loan: loan.ID, transfer: id, lender: loan.lender_ID, borrower: loan.borrower_ID, qty: offered, landedCost: loan.landedCost, repaymentMode });
+  await transition(id, ['PENDING_SUPPLIER'], { status, repaymentMode, repaysLoan_ID: repaysLoan || null });
+  await audit.log(actor, 'SUPPLIER_ACCEPTED', { transfer: id, qty: offered, repaymentMode, repaysLoan });
+  if (!repaysLoan) {
+    const drug = await SELECT.one.from('medilink.Drugs').where({ ID: t.drug_ID });
+    const loan = { ID: cds.utils.uuid(), lender_ID: t.supplier_ID, borrower_ID: t.receiver_ID, drug_ID: t.drug_ID, qty: offered, landedCost: Math.round(offered * Number(drug.unitCost || 0) * 100) / 100, repaymentMode, status: 'OPEN', transfer_ID: id };
+    await INSERT.into('medilink.Ledger').entries(loan);
+    await audit.log(actor, 'LEDGER_LOAN_RECORDED', { loan: loan.ID, transfer: id, lender: loan.lender_ID, borrower: loan.borrower_ID, qty: offered, landedCost: loan.landedCost, repaymentMode });
+  }
   await notify({ hospital: t.receiver_ID, kind: 'SUPPLIER_ACCEPTED', message: `${t.supplier_ID} accepted ${offered} units; awaiting approver sign-off`, ref: id });
   ws.emit('status', { transferId: id, status, message: 'Supplier accepted' });
   if (offered < t.qty) await fallback(t.request_ID, actor); // route the remainder to the next ranked supplier
@@ -146,7 +158,7 @@ async function supplierDecline(id, { reason, reasonCode }, actor, status = 'DECL
   const t = await load(id);
   expectStatus(t, 'PENDING_SUPPLIER');
   if (status === 'DECLINED' && !reason && !reasonCode) throw wfError(400, 'DECLINE_REASON_REQUIRED', 'A decline reason is required');
-  await UPDATE(T).set({ status, declineReason: [reasonCode, reason].filter(Boolean).join(': ') || 'No response within ' + config.supplierResponseTimeoutMin + ' minutes' }).where({ ID: id });
+  await transition(id, ['PENDING_SUPPLIER'], { status, declineReason: [reasonCode, reason].filter(Boolean).join(': ') || 'No response within ' + config.supplierResponseTimeoutMin + ' minutes' });
   await audit.log(actor, status === 'DECLINED' ? 'SUPPLIER_DECLINED' : 'SUPPLIER_TIMEOUT', { transfer: id, supplier: t.supplier_ID, reasonCode, reason });
   ws.emit('status', { transferId: id, status, message: status === 'DECLINED' ? 'Supplier declined' : 'Supplier did not respond in time' });
   const next = await fallback(t.request_ID, actor);
@@ -180,7 +192,7 @@ async function fallback(requestId, actor = 'system:fallback') {
 
 /** CAP-native 30-minute timer. Skips transfers that a BPA workflow instance owns. */
 async function timeoutSweep(now = new Date()) {
-  // compared in JS: an ISO "...Z" string against a TIMESTAMP column is not portable to HANA
+  // compared in JS: comparing an ISO "...Z" string with a TIMESTAMP column in SQL depends on the stored format
   const due = (await SELECT.from(T).where({ status: 'PENDING_SUPPLIER' })).filter(t => t.supplierResponseDueAt && new Date(t.supplierResponseDueAt) < now);
   const out = [];
   for (const t of due) {
@@ -198,7 +210,7 @@ async function approve(id, actor) {
   if (level === 2 && approvals.some(a => a.approver === actor)) throw wfError(409, 'SECOND_SIGNOFF_SAME_USER', 'The second sign-off must come from a different approver');
   await INSERT.into('medilink.Approvals').entries({ ID: cds.utils.uuid(), transfer_ID: id, level, approver: actor, decision: 'APPROVE', decidedAt: new Date().toISOString() });
   const status = level === 1 && t.requiresSecondSignoff ? 'PENDING_SECOND_APPROVAL' : 'APPROVED';
-  await UPDATE(T).set({ status }).where({ ID: id });
+  await transition(id, [t.status], { status });
   await audit.log(actor, 'APPROVED', { transfer: id, level, risks: t.riskReasons, next: status });
   ws.emit('status', { transferId: id, status, message: level === 1 && status !== 'APPROVED' ? `Second sign-off required (${t.riskReasons})` : 'Approved' });
   if (status === 'APPROVED') {
@@ -214,12 +226,30 @@ async function reject(id, reason, actor) {
   expectStatus(t, 'PENDING_APPROVAL', 'PENDING_SECOND_APPROVAL');
   if (!reason) throw wfError(400, 'REJECT_REASON_REQUIRED', 'A reject reason is required');
   await INSERT.into('medilink.Approvals').entries({ ID: cds.utils.uuid(), transfer_ID: id, level: t.status === 'PENDING_APPROVAL' ? 1 : 2, approver: actor, decision: 'REJECT', reason, decidedAt: new Date().toISOString() });
-  await UPDATE(T).set({ status: 'REJECTED' }).where({ ID: id });
+  await transition(id, [t.status], { status: 'REJECTED' });
   await UPDATE('medilink.Ledger').set({ status: 'CANCELLED' }).where({ transfer_ID: id, status: 'OPEN' });
   await audit.log(actor, 'REJECTED', { transfer: id, reason });
   ws.emit('status', { transferId: id, status: 'REJECTED', message: reason });
   await fallback(t.request_ID, actor);
   return toOut(await load(id), 'Rejected');
+}
+
+const CANCELLABLE = ['PENDING_SUPPLIER', 'PENDING_APPROVAL', 'PENDING_SECOND_APPROVAL', 'APPROVED', 'ASSIGNED'];
+/** Receiver cancels before pickup: open legs and their loans are cancelled; suppliers, approvers and the courier are told. */
+async function cancelRequest(requestId, actor) {
+  const legs = await SELECT.from(T).where({ request_ID: requestId });
+  if (legs.some(t => ['IN_TRANSIT', 'DELIVERED'].includes(t.status))) throw wfError(409, 'REQUEST_IN_FLIGHT', 'stock is already moving');
+  const open = legs.filter(t => CANCELLABLE.includes(t.status)), ids = open.map(t => t.ID);
+  const loans = ids.length ? await UPDATE('medilink.Ledger').set({ status: 'CANCELLED' }).where({ transfer_ID: { in: ids }, status: 'OPEN' }) : 0;
+  if (ids.length) await UPDATE(T).set({ status: 'CANCELLED' }).where({ ID: { in: ids }, status: { in: CANCELLABLE } });
+  await UPDATE('medilink.Requests').set({ status: 'CANCELLED' }).where({ ID: requestId });
+  await audit.log(actor, 'REQUEST_CANCELLED', { request: requestId, transfers: ids, loansCancelled: loans });
+  for (const t of open) {
+    if (t.status === 'ASSIGNED') await require('./courier').revoke(t.ID, actor, 'CANCELLED');
+    await notify({ hospital: t.supplier_ID, kind: 'REQUEST_CANCELLED', severity: 'MEDIUM', ref: t.ID, message: `The request for ${t.qty} units was cancelled by the receiving hospital; nothing needs to be sent` });
+    ws.emit('status', { transferId: t.ID, status: 'CANCELLED', message: 'Request cancelled by the receiving hospital' }); // reaches supplier, receiver and the assigned courier
+  }
+  return { request: requestId, status: 'CANCELLED' };
 }
 
 // ---------- SAP Build Process Automation ----------
@@ -248,4 +278,4 @@ async function startBpa(t) {
   t.workflowInstanceId = res.json.id;
 }
 
-module.exports = { choosePlan, supplierReview, supplierAccept, supplierDecline, fallback, timeoutSweep, approve, reject, bpaContext, riskReasons, toOut, load, wfError };
+module.exports = { choosePlan, supplierReview, supplierAccept, supplierDecline, fallback, timeoutSweep, approve, reject, cancelRequest, bpaContext, riskReasons, toOut, load, wfError };

@@ -10,8 +10,7 @@
   },
   "dependencies": {
     "dotenv": "^16",
-    "express": "^4",
-    "medilink": "file:.."
+    "express": "^4"
   },
   "engines": {
     "node": ">=20"

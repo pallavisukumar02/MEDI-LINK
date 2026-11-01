@@ -66,6 +66,7 @@ async function quarantineMatching(flag, actor) {
         await UPDATE('medilink.Transfers').set({ status: 'CANCELLED', declineReason: 'Lot flagged: ' + flag.reason }).where({ ID: t.ID });
         await UPDATE('medilink.Ledger').set({ status: 'CANCELLED' }).where({ transfer_ID: t.ID, status: 'OPEN' });
         await audit.log(actor, 'TRANSFER_CANCELLED', { transfer: t.ID, reason: 'FLAGGED_LOT' });
+        await require('./courier').revoke(t.ID, actor, 'RECALLED');
         transfersCancelled++;
       } else if (t.status === 'IN_TRANSIT') {
         await UPDATE('medilink.Transfers').set({ quarantineSuggested: true }).where({ ID: t.ID });

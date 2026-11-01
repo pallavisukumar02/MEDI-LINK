@@ -2,10 +2,10 @@
 /*
  * Acceptance for the experience layer: the PRD section 18 demo run through /me/* only, as the demo users,
  * asserting journey stage, task cards and plain-language messages at every beat. The only non-/me calls are
- * what is not a person tapping a screen: the MediSoft login popup (the hospital software's own UI) and the
- * courier's temperature logger feed (device telemetry).
+ * what is not a hospital user tapping a screen: the MediSoft login popup (the hospital software's own UI) and the
+ * courier's link (/courier/*: the rider's phone and the temperature logger; couriers have no MediLink account).
  */
-require('./helpers/env')({ MEDISOFT_BASE_URL: 'http://localhost:4112', MATCHER_URL: 'http://localhost:5112', MATCHER_FALLBACK_ENABLED: 'false' });
+require('./helpers/env')({ MATCHER_FALLBACK_ENABLED: 'false' });
 const procs = require('./helpers/procs');
 const cds = require('@sap/cds');
 const T = cds.test(__dirname + '/..');
@@ -16,7 +16,9 @@ const home = async user => { const r = await T.axios.get('/me/home', as(user)); 
 const act = (user, a, values = {}, key) => T.axios.post(a.path || `/me/actions/${a}`, { ...(a.body || {}), ...values }, as(user, key ? { 'Idempotency-Key': key } : {}));
 const task = (h, kind) => h.tasks.find(x => x.kind === kind);
 const journeyOf = (h, id) => h.journeys.find(j => j.id === id);
-const telemetry = (body, user = 'sim') => T.axios.post('/odata/v4/delivery/telemetry', body, as(user)); // logger device feed
+const byLink = token => ({ headers: { Authorization: 'Courier ' + token } });
+const tokenOf = url => new URL(url).hash.replace(/^#t=/, ''); // what courier.html reads from its URL fragment
+const telemetry = (body, token = s.token) => T.axios.post('/courier/location', body, byLink(token)); // rider's phone / logger
 const H1 = { lat: 12.9299, long: 77.5826 }, H5 = { lat: 12.9255, long: 77.5468 };
 const along = f => ({ lat: H5.lat + (H1.lat - H5.lat) * f, long: H5.long + (H1.long - H5.long) * f });
 const NO_JARGON = /odata|stack|rule \d|\b[0-9a-f]{8}-[0-9a-f]{4}-|undefined|null\b|\{\w+\}/i;
@@ -24,9 +26,10 @@ let medisoft, matcher;
 const s = {};
 
 beforeAll(async () => {
-  medisoft = await procs.startMedisoft(4112);
-  matcher = await procs.startMatcher(5112);
+  medisoft = await procs.startMedisoft();
+  matcher = await procs.startMatcher();
   if (!matcher) throw new Error('Python with ortools/fastapi/uvicorn is required (pip install -r matcher/requirements.txt)');
+  Object.assign(process.env, { MEDISOFT_BASE_URL: medisoft.url, MATCHER_URL: matcher.url }); require('../srv/lib/config').reload();
 }, 60000);
 afterAll(() => procs.stop(medisoft, matcher));
 
@@ -34,8 +37,8 @@ async function allowInMediSoft(url) {
   const q = Object.fromEntries(new URL(url).searchParams);
   const form = o => new URLSearchParams(o).toString();
   const H = { 'Content-Type': 'application/x-www-form-urlencoded' };
-  const login = await fetch('http://localhost:4112/oauth/login', { method: 'POST', headers: H, body: form({ ...q, username: 'pharm.jayanagar', password: 'medisoft-demo' }), redirect: 'manual' });
-  const consent = await fetch('http://localhost:4112/oauth/consent', { method: 'POST', headers: { ...H, cookie: login.headers.get('set-cookie').split(';')[0] }, body: form({ ...q, decision: 'allow' }), redirect: 'manual' });
+  const login = await fetch(`${medisoft.url}/oauth/login`, { method: 'POST', headers: H, body: form({ ...q, username: 'pharm.jayanagar', password: 'medisoft-demo' }), redirect: 'manual' });
+  const consent = await fetch(`${medisoft.url}/oauth/consent`, { method: 'POST', headers: { ...H, cookie: login.headers.get('set-cookie').split(';')[0] }, body: form({ ...q, decision: 'allow' }), redirect: 'manual' });
   return T.axios.get(`/oauth/medisoft/callback${new URL(consent.headers.get('location')).search}`);
 }
 
@@ -145,7 +148,7 @@ describe('PRD section 18 demo through /me/* only', () => {
     expect(task(await home('sunil'), 'accept_request')).toBeUndefined();
     const notMine = await act('sunil', card.primaryAction, { quantity: 16, repaymentMode: 'IN_KIND' });
     expect(notMine.data).toMatchObject({ code: 'NOT_SUPPLIER', title: 'Not your request' });
-    const wrongRole = await act('partner', card.primaryAction, { quantity: 16, repaymentMode: 'IN_KIND' });
+    const wrongRole = await act('meera', card.primaryAction, { quantity: 16, repaymentMode: 'IN_KIND' });
     expect(wrongRole.status).toBe(403);
     expect(wrongRole.data.code).toBe('NOT_ALLOWED');
 
@@ -175,29 +178,39 @@ describe('PRD section 18 demo through /me/* only', () => {
     for (const e of aj.timeline) expect(e.time).toMatch(/\d{1,2}:\d{2} (am|pm)$/);
   });
 
-  test('5. pickup, live tracking, road closed -> re-route; temperature spike on another shipment', async () => {
-    const p = await home('partner');
-    const card = task(p, 'pickup');
-    expect(card.title).toBe('Pick up 16 vials at Banashankari Care Hospital');
-    expect(card.primaryAction.fields.map(f => [f.name, f.type])).toEqual([['batchNo', 'barcode'], ['sealId', 'barcode'], ['loggerId', 'barcode']]);
-    expect(card.primaryAction.fields[0].hint).toBe('Expected: SOL24B077, SOL25A015');
-    const bad = await act('partner', card.primaryAction, { batchNo: 'WRONG1', sealId: 'SEAL-9001', loggerId: 'LOG-9001' });
+  test('5. courier link, pickup, live tracking, road closed -> re-route; temperature spike on another shipment', async () => {
+    // the courier has no account: the supplier shares this delivery's link (also emailed to the partner's dispatch desk)
+    const share = journeyOf(await home('ravi'), s.request).actions.find(a => a.id === 'courier-link');
+    expect(share).toMatchObject({ label: 'Courier link', style: 'secondary' });
+    const shared = await act('ravi', share, {}, 'share-1');
+    expect(shared.data).toMatchObject({ message: 'Share this link with the courier. It works for this delivery only.', result: { url: expect.stringMatching(/\/courier\.html#t=[A-Za-z0-9_-]{43}$/) } });
+    s.token = tokenOf(shared.data.result.url);
+    expect(journeyOf(await home('asha'), s.request).actions.map(a => a.id)).not.toContain('courier-link'); // receiver: tracking, not the link
+    const job = (await T.axios.get('/courier/job', byLink(s.token))).data;
+    expect(job).toMatchObject({ status: 'ASSIGNED', next: 'pickup', qty: 16, drug: { name: 'Carboplatin' }, pickup: { name: expect.stringMatching(/^Banashankari Care Hospital/) }, drop: { name: expect.stringMatching(/^City Cancer Hospital/) }, partner: { name: 'CoolRoute Logistics (synthetic)' } });
+    expect(JSON.stringify(job)).not.toMatch(/SOL24B077|SOL25A015|patient/i); // the pickup scan must prove the batches
+    const bad = await T.axios.post('/courier/pickup', { batchNo: 'WRONG1', sealId: 'SEAL-9001', loggerId: 'LOG-9001' }, byLink(s.token));
     expect(bad.data).toMatchObject({ code: 'BATCH_MISMATCH', title: 'Wrong batch' });
-    const pk = await act('partner', card.primaryAction, { batchNo: 'SOL24B077, SOL25A015', sealId: 'SEAL-9001', loggerId: 'LOG-9001' }, 'pk-1');
-    expect(pk.data.journey).toMatchObject({ stage: 5, key: 'on_the_way' });
-    expect(pk.data.journey.headline).toMatch(/^Deliver to City Cancer Hospital by ~\d{1,2}:\d{2} (am|pm)$/);
-    for (const f of [0.1, 0.3]) expect((await telemetry({ transfer: s.transfer, ...along(f), temperatureC: 24.5 })).data.excursion).toBe(false);
+    const pk = await T.axios.post('/courier/pickup', { batchNo: 'SOL24B077, SOL25A015', sealId: 'SEAL-9001', loggerId: 'LOG-9001', riderName: 'Ravi K (synthetic)', riderPhone: '+91 90000 00001' }, byLink(s.token));
+    expect(pk.data).toMatchObject({ message: 'Pickup recorded. Tracking is live.', job: { status: 'IN_TRANSIT', next: 'deliver' } });
+    expect(journeyOf(await home('asha'), s.request)).toMatchObject({ stage: 5, key: 'on_the_way' });
+    for (const f of [0.1, 0.3]) expect((await telemetry({ ...along(f), temperatureC: 24.5 })).data.excursion).toBe(false);
+    await telemetry({ ...along(0.35), accuracyM: 12 }); // GPS-only fix from the rider's phone
     const aj = journeyOf(await home('asha'), s.request);
     expect(aj.headline).toMatch(/^On the way, arriving ~\d{1,2}:\d{2} (am|pm), 24\.5 °C$/);
     expect(journeyOf(await home('ravi'), s.request).headline).toBe('Picked up');
+    const live = (await T.axios.get(`/me/journeys/${s.request}/tracking`, as('asha'))).data.legs[0]; // the receiver's map
+    expect(live.steps.filter(x => x.done).map(x => x.label)).toEqual(['Courier assigned', 'Picked up', 'On the way']);
+    expect(live).toMatchObject({ riderName: 'Ravi K (synthetic)', riderPhone: '+91 90000 00001', position: { accuracyM: 12 }, temperature: { current: 24.5, inRange: true } });
+    expect(live.etaText).toMatch(/^~\d+ min · \d{1,2}:\d{2} (am|pm)$/);
 
-    const road = journeyOf(await home('partner'), s.request).actions.find(a => a.id === 'report-road-closed');
-    const rc = await act('partner', road, { note: 'Silk Board junction' }, 'rc-1');
-    expect(rc.data.message).toMatch(/^Re-routed\. New arrival time about \d{1,2}:\d{2} (am|pm)\.$/);
+    const rc = await T.axios.post('/courier/road-closed', { note: 'Silk Board junction' }, byLink(s.token));
+    expect(rc.data.message).toBe('Thanks. We found a new route.');
     expect(journeyOf(await home('asha'), s.request)).toMatchObject({ key: 'rerouted', colour: 'amber' });
     expect(journeyOf(await home('asha'), s.request).headline).toMatch(/^Re-routed around Silk Board junction, new ETA \d{1,2}:\d{2} (am|pm)$/);
 
-    await telemetry({ loggerId: 'LOG-7781', lat: 12.95, long: 77.69, temperatureC: 11.4 }); // seeded H2 -> H3 cold-chain shipment
+    const cold = (await T.axios.get('/admin/courier-links', as('admin'))).data.links.find(l => l.transferId === 'a0000000-0000-4000-8000-000000000001');
+    await telemetry({ lat: 12.95, long: 77.69, temperatureC: 11.4 }, cold.token); // seeded H2 -> H3 cold-chain shipment
     const lata = await home('lata');
     expect(lata.alerts[0]).toMatchObject({ kind: 'EXCURSION', severity: 'red', message: "Temperature went out of range on the Trastuzumab 440 mg delivery. Don't use until checked." });
     const lj = lata.journeys.find(j => j.drug.id === 'D-TRAS440');
@@ -207,7 +220,7 @@ describe('PRD section 18 demo through /me/* only', () => {
   });
 
   test('6. arrival: scan, failed check explained, accept; coverage green; loan shown to both sides', async () => {
-    await telemetry({ transfer: s.transfer, ...along(0.98), temperatureC: 25.1 });
+    await telemetry({ ...along(0.98), temperatureC: 25.1 });
     const h = await home('asha');
     expect(journeyOf(h, s.request)).toMatchObject({ stage: 6, stageLabel: 'Arrived', headline: 'Arrived. Check and accept' });
     expect(journeyOf(await home('ravi'), s.request).headline).toBe('Delivered');

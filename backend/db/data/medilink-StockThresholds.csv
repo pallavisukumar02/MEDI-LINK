@@ -1,0 +1,3 @@
+hospital_ID;drug_ID;minUnits;updatedAt;updatedBy
+H5;D-5FU500;8;2026-11-01T12:58:14.101Z;seed (synthetic)
+H1;D-DOXO50;6;2026-11-01T12:58:14.101Z;seed (synthetic)

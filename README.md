@@ -1,12 +1,18 @@
 # MediLink
 
-Critical-drug shortfall detection and safe inter-hospital transfer for Bengaluru hospitals.
-SAP Hackfest 2026 prototype, built on **free** SAP BTP services only. Product spec: [`docs/MediLink_PRD.md`](docs/MediLink_PRD.md).
+Critical-drug shortfall detection, stock and expiry monitoring, and safe inter-hospital transfer for Bengaluru hospitals.
+SAP Hackfest 2026 prototype. **SAP CAP on one SQLite file, MediLink's own accounts, free software only**; no SAP BTP account needed.
+SAP AI Core, SAP Build Process Automation, SAP Alert Notification and the SAP Business Accelerator Hub sandbox are optional
+integrations, off by default.
 
-**Building a UI?** Start with [`docs/EXPERIENCE_API.md`](docs/EXPERIENCE_API.md): a handful of `/me/*` calls give every user their home screen,
-one plain-language journey per request and self-describing buttons. **Going live on SAP BTP?** Follow [`docs/SAP_GO_LIVE.md`](docs/SAP_GO_LIVE.md).
-**Taking over the code?** Read [`HANDOVER.md`](HANDOVER.md).
-**No SAP BTP account?** Run it standalone (SQLite or PostgreSQL, MediLink logins, no BTP service): [§3b](#3b-standalone-mode-no-sap-btp) and [`docs/STANDALONE_HOSTING.md`](docs/STANDALONE_HOSTING.md).
+| Read | For |
+|---|---|
+| [`docs/MediLink_PRD.md`](docs/MediLink_PRD.md) | Product spec (v1.1) |
+| [`docs/EXPERIENCE_API.md`](docs/EXPERIENCE_API.md) | The `/me/*` API a UI builds on |
+| [`docs/HOSTING.md`](docs/HOSTING.md) | Running it in production: disk, backups, HTTPS, secrets |
+| [`docs/SAP_INTEGRATIONS.md`](docs/SAP_INTEGRATIONS.md) | Switching on the optional SAP services |
+| [`HANDOVER.md`](HANDOVER.md) | Taking over the code |
+| [`docs/AUDIT.md`](docs/AUDIT.md) | Audit of the code before this build, with status after it |
 
 > **All data in this repo is synthetic.** Hospital names, stock, batches, licences and patients are invented;
 > hospital coordinates are real Bengaluru localities. Patient names never enter MediLink: patient refs are
@@ -14,284 +20,244 @@ one plain-language journey per request and self-describing buttons. **Going live
 
 ---
 
-## 1. Repo layout
+## 1. Quick start (zero set-up)
 
-| Folder | What it is | Tech |
-|---|---|---|
-| `backend/` | CAP service: cover, onboarding/OAuth client, ingestion, hard rules, workflow, delivery, receipt, ledger, audit, trust feed | SAP CAP (Node.js, CDS), SQLite (dev) / HANA Cloud (hybrid, prod) |
-| `backend/db/` | `schema.cds` (PRD §11 data model) + synthetic seed CSVs in `db/data/` | CDS |
-| `backend/srv/` | `services.cds` (16 services, all with `@requires`), handlers, `lib/` business logic, `server.js` (REST endpoints) | |
-| `backend/srv/lib/{journey,home,actions,messages,http-routes}.js` | Experience layer: `/me/*` (journeys, home inbox, onboarding checklist, actions as data, plain-language errors) | CAP + Express |
-| `backend/_i18n/messages.properties` | Every user-facing text and error message (CAP i18n bundle; add `_kn` / `_hi` files to translate) | |
-| `backend/test/` | Jest: unit + integration + PRD §18 end-to-end | Jest, `@cap-js/cds-test` |
-| `matcher/` | `POST /rank`: plan ranking with Google OR-Tools CP-SAT | Python, FastAPI |
-| `mock-medisoft/` | Mock partner HIS "MediSoft": login, consent screen, OAuth 2.0 auth-code + token endpoints, `/stock`, `/schedule` | Node, Express |
-| `connector/` | Read-only connector for an in-house pharmacy DB: pairing code, SQLAlchemy over 2 views (any SQLAlchemy URL), hashes MRNs, pushes to `/ingest`. Demo DB = SQLite file built by `seed_sqlite.py` | Python |
-| `simulator/` | Delivery-partner telemetry (GPS + temperature), one deliberate excursion | Node (no dependencies) |
-| `seed/` | `generate.js` (date-relative synthetic seed for every component), SAP sandbox offline fixture, sample sheet, sample CDSCO-style alert | Node |
-| `scripts/` | `dev.js` (`npm run dev`), `demo.js` (`npm run demo`), `demo-experience.js` (`npm run demo:experience`) | Node |
-| `frontend/` | The UI, no build step: `index.html` (landing page, 3D blister pack) and `app.html` (sign-in with the 3D tablet bottle, then home / onboarding / journey / city / admin on the `/me/*` API). Served by CAP in development, by the app router on Cloud Foundry | HTML, CSS, vanilla JS, Three.js r128 |
-| `app/router/` | SAP app router: single URL, XSUAA login, forwards `/me`, `/odata`, `/ws` … to CAP, serves future UI apps from `resources/` | `@sap/approuter` |
-| `mta.yaml`, `secrets.mtaext.example` | Cloud Foundry deployment (free plans) | MTA |
-| `docs/` | PRD, `EXPERIENCE_API.md` (UI contract), `SAP_GO_LIVE.md` (click-by-click BTP checklist) | |
-
-## 2. Prerequisites
-
-- Node.js 20+ and `npm i -g @sap/cds-dk` (gives `cds` and `cds bind`)
-- Python 3.11+
-- No Docker, no database server: development uses in-memory SQLite and the connector demo uses a SQLite file
-- For deployment only: Cloud Foundry CLI v8 (`cf`) with the MultiApps plugin (`cf install-plugin multiapps`), and `npm i -g mbt`
-
-## 3. Quick start (development profile: no SAP credentials)
+Needs **Node.js 22.12+** (SAP CAP 10 requires it) and **Python 3.11+**. No Docker, no database server, no SAP account.
 
 ```bash
-npm run setup                 # npm install in backend, mock-medisoft, simulator + pip install matcher & connector deps
-cp backend/.env.example backend/.env   # Windows: copy backend\.env.example backend\.env
-#   then in backend/.env set LLM_PROVIDER=none and replace every change-me-random-32-chars (openssl rand -hex 16)
-npm run dev                   # CAP :4004 + matcher :5001 + mock MediSoft :4100 + simulator
-npm run demo                  # in a second terminal: runs the PRD §18 3-minute demo script against the running stack
-# or, after restarting npm run dev:
-npm run demo:experience       # the same demo through /me/* only, printing each user's home screen at every beat
+npm run setup     # npm install in backend, mock-medisoft, simulator + pip install for matcher and connector
+npm run dev       # CAP :4004 + matcher :5001 + mock MediSoft :4100 + courier simulator
 ```
 
-**The UI:** with `npm run dev` running open http://localhost:4004/ (landing page) and http://localhost:4004/app.html (sign in).
-On the sign-in page the *Demo Role* links fill in a demo account: **Pharmacist** = `ravi` (Banashankari, supplier side),
-**Admin** = `admin`, **Unconnected** = `asha` (City Cancer Hospital, starts onboarding). Any demo user works as `<name>@anything` with password `demo`
-(`meera`, `kiran`, `partner`, `lata`, …). Sign-in is a mock of `POST /auth/login` (not in the API yet); on Cloud Foundry the app router's SAP login replaces it.
+On the first run `npm run dev` creates `backend/.env` from `backend/.env.example` with fresh random secrets (file mode 0600,
+never printed; `DEMO_PASSWORD=demo`) and the database `backend/db/medilink.sqlite` with the synthetic seed and demo users.
+The database **persists** across restarts. Start over with `npm run db:reset` (stop `npm run dev` first).
 
-`npm run dev` uses SQLite in memory, mocked users and `LLM_PROVIDER=none` behaviour, so it needs **no** SAP account.
-The database resets on every restart: **restart `npm run dev` before running `npm run demo` again.**
-Without a `backend/.env` everything still runs on built-in dev defaults.
+| Open | What |
+|---|---|
+| http://localhost:4004/ | Landing page |
+| http://localhost:4004/app.html | Sign in as a demo user (password `demo`) |
+| http://localhost:4004/health | `{ status, profile, synthetic, services }` |
 
-### Demo users (mocked, development/hybrid/test only; password `demo` for all)
+Run the PRD §18 demo in a second terminal, on a fresh database (stop `npm run dev`, `npm run db:reset`, start it again):
+
+```bash
+npm run demo                # the 3-minute demo script, HTTP Basic as the demo users
+npm run demo:experience     # the same demo through /me/* only, signing in with POST /auth/login; prints every home screen
+```
+
+### Demo users (synthetic; password = `DEMO_PASSWORD`, `demo` in development)
+
+Only pharmacy staff and the admin sign in. Delivery partners (P1 CoolRoute Logistics, cold-chain; P2 QuickMeds Couriers, ambient) have
+no accounts: each delivery gets a courier link ([`docs/EXPERIENCE_API.md`](docs/EXPERIENCE_API.md)).
 
 | User | Role | Acts for |
 |---|---|---|
-| `asha` | pharmacist | H1 City Cancer Hospital, Jayanagar (onboards live via MediSoft) |
+| `asha` | pharmacist | H1 City Cancer Hospital, Jayanagar (onboards live via MediSoft; after connecting: gemcitabine out + an expired lot, doxorubicin low) |
 | `sunil` | pharmacist | H2 Sanjeevani Hospital, Whitefield (SAP sandbox) |
 | `lata` | pharmacist | H3 Lakeside Oncology Centre, Koramangala (DB connector) |
 | `hari` | pharmacist | H4 Hebbal Community Hospital (sheet upload; **expired licence**) |
-| `ravi` | pharmacist | H5 Banashankari Care Hospital (MediSoft; near-expiry donor) |
+| `ravi` | pharmacist | H5 Banashankari Care Hospital (MediSoft; near-expiry donor; trastuzumab out + an expired lot, fluorouracil low, lots expiring in 5/25/85 days) |
 | `meera`, `kiran` | approver | H5 (two people, for the second sign-off) |
 | `anil` / `deepa` | approver | H2 / H1 |
-| `partner`, `sim` | partner | P1 CoolRoute Logistics (cold-chain certified) |
-| `courier2` | partner | P2 QuickMeds Couriers (ambient only) |
-| `bpa` | system | SAP Build Process Automation technical user |
+| `bpa` | system | Technical user for the optional SAP Build Process Automation (API only, HTTP Basic) |
 | `admin` | admin | everything |
 
 MediSoft login (inside the mock HIS consent popup): `pharm.jayanagar` / `medisoft-demo` (H1), `pharm.banashankari` / `medisoft-demo` (H5).
 
-### Licence numbers for onboarding
-
-`KA-BLR-20B-1001` (H1, MediSoft, Allow flow) · `KA-BLR-20B-1002` (H2, SAP) · `KA-BLR-20B-1003` (H3, connector → pairing code) ·
+Licence numbers for onboarding: `KA-BLR-20B-1001` (H1, MediSoft) · `KA-BLR-20B-1002` (H2, SAP) · `KA-BLR-20B-1003` (H3, connector → pairing code) ·
 `KA-BLR-20B-1004` (H4, **expired → refused**) · `KA-BLR-20B-1005` (H5, MediSoft).
 
-## 3b. Standalone mode (no SAP BTP)
+## 2. Repo layout
 
-Same CAP backend, same `/me/*` API and rules, but no SAP BTP service at all. Selected only by configuration: the CAP profile
-`standalone` (SQLite file `backend/db/medilink.sqlite`, survives restarts) or `standalone-pg` (PostgreSQL from `DATABASE_URL`).
-The `development`, `hybrid` and `production` profiles are untouched. Step by step, laptop and free online hosts: [`docs/STANDALONE_HOSTING.md`](docs/STANDALONE_HOSTING.md).
+| Folder | What it is | Tech |
+|---|---|---|
+| `backend/` | CAP service: cover, stock and expiry monitoring, onboarding/OAuth client, ingestion, hard rules, workflow, delivery, receipt, ledger, audit, trust feed, accounts | SAP CAP 10 (Node.js, CDS), SQLite |
+| `backend/db/` | `schema.cds` (PRD §11 data model) + synthetic seed CSVs in `db/data/`; the database file `medilink.sqlite` (git-ignored) | CDS |
+| `backend/srv/` | `services.cds` (CAP services, all with `@requires`), handlers, `lib/` business logic, `server.js` (REST endpoints), `auth.js` (MediLink accounts) | |
+| `backend/srv/lib/{journey,home,monitor,tracking,actions,messages,http-routes}.js` | Experience layer `/me/*`: journeys, home inbox, stock, notifications, live tracking, onboarding checklist, actions as data, plain-language errors | CAP + Express |
+| `backend/srv/lib/courier.js` | Courier links and the public `/courier/*` endpoints (no sign-in) | Express |
+| `backend/_i18n/messages.properties` | Every user-facing text and error message | |
+| `backend/test/` | Jest: unit + integration + PRD §18 end-to-end | Jest, `@cap-js/cds-test` |
+| `matcher/` | `POST /rank`: plan ranking with Google OR-Tools CP-SAT | Python, FastAPI |
+| `mock-medisoft/` | Mock partner HIS "MediSoft": login, consent screen, OAuth 2.0 auth-code (PKCE) + token endpoints, `/stock`, `/schedule` | Node, Express |
+| `connector/` | Read-only connector for an in-house pharmacy DB (any SQLAlchemy URL): pairing code, hashes MRNs, pushes to `/ingest`. Demo DB = SQLite file | Python |
+| `simulator/` | Plays the courier through each delivery's courier link: pickup, GPS + temperature, one deliberate excursion | Node (no dependencies) |
+| `seed/` | `generate.js` (date-relative synthetic seed for every component), SAP sandbox offline fixture, sample sheet, sample CDSCO-style alert | Node |
+| `scripts/` | `dev.js`, `start.js`, `db.js`, `env-check.js`, `demo.js`, `demo-experience.js`, `py.js` (cross-platform Python launcher) | Node |
+| `frontend/` | The UI, no build step, served by CAP: `index.html` (landing) and `app.html` (sign-in and the signed-in app on `/me/*`) | HTML, CSS, vanilla JS |
+| `docs/` | PRD, experience API, hosting, SAP integrations, audit | |
 
-```bash
-# in backend/.env: AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY (32+ random chars each), DEMO_PASSWORD (8+ chars)
-npm run env:check             # says in plain words what is still missing (never prints values)
-npm run db:init               # schema + synthetic seed + demo users (password = DEMO_PASSWORD); keeps an existing database
-npm run start:standalone      # CAP (standalone profile) + matcher + mock MediSoft + simulator; add -- --pg for PostgreSQL
-npm run demo:experience       # signs in through POST /auth/login as each demo user
-npm run db:reset              # start again from the seed (the demo changes the data)
-```
-
-Sign in with `POST /auth/login {"username","password"}` → `{ token, expiresAt, user }`, then send `Authorization: Bearer <token>`
-(WebSocket: `ws://<host>/ws/tracking?access_token=<token>`). `POST /auth/logout`, `GET /auth/me`; admins: `GET|POST /auth/users`,
-`POST /auth/users/<name>/reset-password|disable|enable`. Scripts may also use HTTP Basic with the same account.
-Five wrong passwords pause an account for 15 minutes; the error never says whether the username exists.
-
-| SAP BTP service | Standalone replacement | Selected by | Switch back to BTP |
-|---|---|---|---|
-| SAP HANA Cloud | SQLite file / PostgreSQL (`@cap-js/postgres`, SSL on) | `CDS_ENV=standalone` / `standalone-pg` + `DATABASE_URL` | Remove `CDS_ENV=standalone…`; `npm run db:export` → `cds deploy --to hana` ([SAP_GO_LIVE](docs/SAP_GO_LIVE.md#moving-from-standalone-to-btp)) |
-| HANA spatial `ST_Distance` | Haversine (+ OpenRouteService if `ORS_API_KEY`) | automatic on non-HANA databases (`geo.js`) | automatic on HANA |
-| XSUAA (login, roles) | MediLink accounts: bcrypt passwords, HS256 JWT, same roles + hospital/partner attributes as `xs-security.json` (CAP custom auth `srv/auth.js`) | standalone profiles; `AUTH_JWT_SECRET`, `AUTH_JWT_TTL` | `production` profile (`kind: xsuaa`); map users to role collections |
-| Destination service | AES-256-GCM rows in `TokenVault`, bound to hospital + provider, refreshed before expiry | standalone profiles (always local); `TOKEN_ENCRYPTION_KEY` | Bind `destination`; hospitals press Connect again |
-| Build Process Automation | Built-in approvals + 30-min timer | standalone forces `APPROVAL_MODE=cap` | `APPROVAL_MODE=bpa` + `BPA_*` |
-| Alert Notification | In-app alerts + email over SMTP (nodemailer) | `SMTP_HOST` … `ALERT_EMAIL_FROM`, `ALERT_EMAIL_TO` | `ALERT_NOTIFICATION_ENABLED=true` + binding (BTP profiles) |
-| AI Core | Off (templates), or any OpenAI-compatible API | `LLM_PROVIDER=none` / `openai-compatible` + `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | `LLM_PROVIDER=aicore` (ignored in standalone) |
-| Cloud Foundry + app router | Any Node host (CAP, mock MediSoft) + Python host (matcher, `python app.py`); CAP serves the UI from `frontend/` | `PORT`, `APP_BASE_URL`, `MATCHER_URL`, `MEDISOFT_BASE_URL` | `mbt build` + `cf deploy` (§7) |
-
-`GET /health` says which mode runs, e.g. `"mode": "standalone", "services": "Database: PostgreSQL (standalone) · Logins: MediLink accounts · Approvals: built-in · Email: on · AI: off"`;
-`GET /health/integrations` (admin) lists each replacement. The SAP Business Accelerator Hub sandbox (free api.sap.com key, not BTP) still works in standalone mode.
-
-## 4. Every command
+## 3. Commands
 
 | Command (repo root) | What it does |
 |---|---|
 | `npm run setup` | Install all Node + Python dependencies |
-| `npm run seed` | Regenerate the date-relative synthetic seed (CAP CSVs, MediSoft data, connector SQL, SAP fixture). Runs automatically in dev when stale |
-| `npm run dev` | Start CAP + matcher + mock MediSoft + simulator (`--no-sim`, `--no-matcher` to skip one) |
-| `npm run demo` | Run the PRD §18 demo script against the running dev stack |
-| `npm run demo:experience` | The same demo through the experience layer (`/me/*`) only; prints every user's home screen in plain language (in standalone mode it signs in through `POST /auth/login`) |
-| `npm run start:standalone` | Like `npm run dev`, but CAP in the `standalone` profile: persistent SQLite file, MediLink logins (`-- --pg` for PostgreSQL) |
-| `npm run db:init` / `db:reset` | Standalone SQLite: create schema + seed + demo users (keeps existing data) / delete and recreate |
-| `npm run db:init:pg` / `db:reset:pg` | The same on PostgreSQL (`DATABASE_URL`) |
-| `npm run db:export` | Every MediLink table as CAP seed CSVs in `backend/db/export/` (for moving to HANA Cloud; `-- --pg` for PostgreSQL) |
-| `npm run env:check` | Which variables are missing for `CDS_PROFILE` (or `-- --profile <name>`), in plain words, never values |
-| `npm test` | All test suites (backend Jest incl. experience e2e, HANA/PostgreSQL compatibility and 50-hospital performance, **then the whole backend suite again under the standalone profile**; mock-medisoft, simulator, matcher pytest, connector pytest) |
-| `npm run test:hana-compat` / `test:pg-compat` | HANA + PostgreSQL readiness without a server: model → HANA / PostgreSQL DDL, every query the app runs rendered as HANA and PostgreSQL SQL, SQLite-only lint, spatial switch |
-| `npm run test:standalone` | The backend Jest suite under the standalone profile (MediLink accounts instead of mocked users) |
+| `npm run dev` | Development: CAP + matcher + mock MediSoft + courier simulator (`npm run dev -- --no-sim` / `--no-matcher` skips one). Creates `backend/.env` and the database on first run |
+| `npm start` | Production: the CAP server only, with `NODE_ENV=production`. Needs a filled `backend/.env` (or host variables) and a database from `npm run db:init`. Refuses to start while enabled demo accounts still use the password `demo`. Run the matcher separately ([`docs/HOSTING.md`](docs/HOSTING.md)) |
+| `npm run db:init` | Create the SQLite database: schema + synthetic seed + demo users (password = `DEMO_PASSWORD`). Keeps an existing database; only adds missing demo users |
+| `npm run db:reset` | Delete the database and create it again (**all data lost**; stop MediLink first). Needed after an update that adds columns (there are no migrations) |
+| `npm run env:check` | Which variables are missing or too weak, and which optional integrations are on, in plain words; never prints values. Production rules when `NODE_ENV=production`. Exit code 1 if something required is missing |
+| `npm run demo` / `npm run demo:experience` | PRD §18 demo against the running `npm run dev` stack, on a fresh database (§1) |
+| `npm run seed` | Regenerate the date-relative synthetic seed. Runs by itself when stale (`npm run dev`, `db:init`) |
+| `npm run seed -- --hospitals 50` | 45 extra synthetic hospitals for scale tests; plain `npm run seed` returns to the 5-hospital set |
+| `npm test` | All suites: backend Jest, mock-medisoft, simulator, matcher pytest, connector pytest |
 | `npm run test:backend` / `test:medisoft` / `test:simulator` / `test:matcher` / `test:connector` | One suite |
-| `npm run connector:seed` | Build the demo "Hospital C" pharmacy database as `connector/hospital_c.db` (SQLite, from the generated seed SQL) |
-| `npm run seed -- --hospitals 50` | Seed 45 extra synthetic hospitals (scale tests). Run plain `npm run seed` to return to the 5-hospital demo set |
-| `npm run connector:run` | Run the connector loop (`cd connector && python connector.py`) |
-| `npm run watch:hybrid` | `cds watch --profile hybrid` against bound HANA Cloud |
-| `npm run build:mta` | `mbt build -t mta_archives` |
-| `npm run deploy:cf` | `cf deploy mta_archives/medilink_1.0.0.mtar` (add `-e secrets.mtaext`, see §7) |
+| `npm run connector:seed` | Build the demo "Hospital C" pharmacy database `connector/hospital_c.db` (SQLite) |
+| `npm run connector:run` | Run the connector loop |
 
 | Command (`backend/`) | |
 |---|---|
-| `npm run start:dev` | CAP only, development profile |
+| `npm start` | `cds-serve` (profile from `NODE_ENV`: development unless `production`) |
 | `npm test` / `npm run test:unit` | All Jest tests / pure unit tests only |
-| `cds deploy --to hana --profile hybrid` | Deploy schema + seed to the bound HDI container |
-| `npm run build` | `cds build --production` → `backend/gen/` |
 
 | Connector (`connector/`) | |
 |---|---|
-| `python connector.py --pair <CODE>` | Exchange the one-time pairing code (from onboarding with licence `KA-BLR-20B-1003`) for a token |
-| `python connector.py --once` / `--dry-run` / *(no flag = loop)* | One sync / read+hash without pushing / sync every `CONNECTOR_SYNC_INTERVAL_SEC` |
+| `python connector.py --pair <CODE>` | Exchange the one-time pairing code (onboarding with licence `KA-BLR-20B-1003`) for a token |
+| `python connector.py --once` / `--dry-run` / *(no flag = loop)* | One sync / read + hash without pushing / sync every `CONNECTOR_SYNC_INTERVAL_SEC` |
 
-### Connector demo (database path, no Docker)
+Connector demo (database path):
 ```bash
-npm run connector:seed                                # SQLite file connector/hospital_c.db from seed/init.sql (opened read-only)
+npm run connector:seed
 # with npm run dev running, onboard H3 as lata to get a pairing code:
 curl -u lata:demo -H "Content-Type: application/json" -d "{\"licenceNo\":\"KA-BLR-20B-1003\"}" http://localhost:4004/onboarding/licence
 cd connector && python connector.py --pair <pairingCode> --once
 ```
 
+## 4. Profiles
+
+| Profile | Selected by | Database | Demo users |
+|---|---|---|---|
+| `development` | default (`npm run dev`) | SQLite file `backend/db/medilink.sqlite` | created on a database without users (`DEMO_PASSWORD`) |
+| `test` | Jest | SQLite in memory | created per run |
+| `production` | `NODE_ENV=production` (`npm start` sets it) | SQLite file `backend/db/medilink.sqlite` | never created by the server; `db:init` creates them with a strong `DEMO_PASSWORD` |
+
+Move the file with `CDS_REQUIRES_DB_CREDENTIALS_URL=/absolute/path/medilink.sqlite` (CAP reads it from the environment or `backend/.env`;
+`npm run dev`, `db:init` and `db:reset` honour it). Keep it on a persistent disk: [`docs/HOSTING.md`](docs/HOSTING.md).
+
 ## 5. Environment variables
 
-All live in `backend/.env` (git-ignored; template `backend/.env.example`). SAP service credentials are **not** env vars:
-they come from `cds bind` (`.cdsrc-private.json`) or Cloud Foundry bindings. Every variable has a safe dev default.
+All in `backend/.env` (git-ignored; template `backend/.env.example`; `npm run dev` creates it) or the host's environment.
+`npm run env:check` reports what is missing. The list the operator must supply for production is in [`HANDOVER.md` → ENV](HANDOVER.md#env).
 
-**App & BTP (reference)**: `NODE_ENV`, `PORT` (4004), `APP_BASE_URL`, `CDS_ENV`, `BTP_GLOBAL_ACCOUNT_SUBDOMAIN`, `BTP_SUBACCOUNT_SUBDOMAIN`, `BTP_REGION`, `CF_API_ENDPOINT`, `CF_ORG`, `CF_SPACE`, `HANA_INSTANCE_NAME`, `HDI_CONTAINER_SERVICE` (names only, used by the README commands)
+**Required** (MediLink will not start without the first two; `env:check` flags the rest):
 
-| Variable | Default | Used by / meaning |
+| Variable | Meaning |
+|---|---|
+| `AUTH_JWT_SECRET` | Signs login tokens. 32+ random characters; changing it signs everyone out |
+| `TOKEN_ENCRYPTION_KEY` | AES-256-GCM key for hospital OAuth tokens. 32+ random characters; keep it stable or hospitals must reconnect |
+| `DEMO_PASSWORD` | Password of the demo users `db:init` creates (8+ characters in production) |
+| `PATIENT_REF_HASH_SALT` | Salt for hashing patient numbers at the source (same value for MediSoft and the connector) |
+| `MEDISOFT_OAUTH_CLIENT_SECRET` | OAuth client secret shared by CAP and MediSoft |
+| `CONNECTOR_PAIRING_SECRET` | HMAC key for stored pairing-code hashes |
+
+Make a random value: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
+**Everything else** (safe defaults):
+
+| Variable | Default | Meaning |
 |---|---|---|
-| `SAP_API_HUB_KEY` | *(empty)* | SAP Business Accelerator Hub key (`APIKey` header). Empty = offline fixture `seed/sap-sandbox-fixture.json` |
-| `SAP_API_HUB_SANDBOX_BASE`, `SAP_API_MATERIAL_STOCK_PATH`, `SAP_API_BATCH_PATH` | see template | Sandbox stock / batch OData paths |
-| `MEDISOFT_BASE_URL` | `http://localhost:4100` | Mock HIS URL (CAP) |
-| `MEDISOFT_OAUTH_CLIENT_ID`, `MEDISOFT_OAUTH_CLIENT_SECRET` | `medilink-client`, dev value | OAuth client (CAP **and** mock-medisoft read the same values) |
-| `MEDISOFT_OAUTH_REDIRECT_URI` | `…:4004/oauth/medisoft/callback` | OAuth redirect |
-| `MEDISOFT_SCOPES` | `stock.read schedule.read` | Read-only scopes requested |
-| `MEDISOFT_PORT`, `MEDISOFT_ALLOWED_REDIRECTS` | 4100, redirect URI | mock-medisoft listen port / allowed redirect URIs (comma separated) |
-| `CONNECTOR_DB_URL` | `sqlite:///connector/hospital_c.db` | Connector source DB: any SQLAlchemy URL (`postgresql://`, `mysql+pymysql://`, `mssql+pyodbc://` …); relative SQLite paths are under the repo and opened read-only. `CONNECTOR_PG_URL` is still read as a fallback; `connector/seed/readonly.sql` = least-privilege PostgreSQL role for real hospitals |
-| `CONNECTOR_INGEST_URL` | `http://localhost:4004/ingest` | Connector push target |
-| `CONNECTOR_SYNC_INTERVAL_SEC` | 900 | Connector loop interval |
-| `CONNECTOR_TOKEN_FILE`, `CONNECTOR_HTTP_TIMEOUT_SEC` | `connector/.connector-token`, 30 | Where the paired token is stored (0600) / HTTP timeout |
-| `CONNECTOR_PAIRING_SECRET` | dev value | HMAC key for stored pairing-code hashes (CAP) |
-| `MATCHER_URL`, `MATCHER_TIMEOUT_MS` | `http://localhost:5001`, 10000 | OR-Tools service |
-| `MATCHER_TOKEN` | *(empty)* | Shared secret CAP sends as `X-Matcher-Token`; set on both sides when deployed |
-| `MATCHER_FALLBACK_ENABLED` | true | If the matcher is down, CAP ranks with a built-in greedy fallback |
+| `PORT` | 4004 | CAP port (hosts usually set it) |
+| `APP_BASE_URL` | `http://localhost:4004` | Public URL of CAP: links in emails, OAuth callback page origin, connector set-up page |
+| `AUTH_JWT_TTL` | `8h` | Login lifetime (`30m`, `8h`, `2d`, or seconds) |
+| `TRUST_PROXY` | `false` | Express "trust proxy" behind a reverse proxy: hop count (`1`) or the proxy IPs/CIDRs, never `true`. Needed so rate limits see the client IP |
+| `APP_TIME_ZONE` | `Asia/Kolkata` | Time zone of times shown to users |
+| `CDS_REQUIRES_DB_CREDENTIALS_URL` | `db/medilink.sqlite` | Database file (§4) |
+| `MEDISOFT_BASE_URL`, `MEDISOFT_OAUTH_CLIENT_ID`, `MEDISOFT_OAUTH_REDIRECT_URI`, `MEDISOFT_SCOPES` | `http://localhost:4100`, `medilink-client`, `…:4004/oauth/medisoft/callback`, `stock.read schedule.read` | Mock HIS OAuth client (CAP **and** mock-medisoft read the same values) |
+| `MEDISOFT_PORT`, `MEDISOFT_ALLOWED_REDIRECTS` | 4100, the redirect URI | mock-medisoft only: listen port / allowed callback URLs (comma separated) |
+| `CONNECTOR_DB_URL` | `sqlite:///connector/hospital_c.db` | Connector source DB, any SQLAlchemy URL (`postgresql://`, `mysql+pymysql://`, `mssql+pyodbc://`); `CONNECTOR_PG_URL` is read as a fallback |
+| `CONNECTOR_INGEST_URL`, `CONNECTOR_SYNC_INTERVAL_SEC` | `http://localhost:4004/ingest`, 900 | Connector push target / loop interval |
+| `CONNECTOR_TOKEN_FILE`, `CONNECTOR_HTTP_TIMEOUT_SEC` | `connector/.connector-token`, 30 | Where the paired token is stored / HTTP timeout |
+| `MATCHER_URL`, `MATCHER_TIMEOUT_MS` | `http://localhost:5001`, 10000 | Where CAP finds the OR-Tools service |
+| `MATCHER_TOKEN` | *(empty)* | Shared secret CAP sends as `X-Matcher-Token`; set the same value on the matcher. A matcher with `NODE_ENV=production` answers 503 without it (CAP then ranks with its greedy fallback) |
+| `MATCHER_HOST` | `127.0.0.1` | Matcher only (`python app.py`): listen address. `0.0.0.0` only when it runs on its own host |
+| `MATCHER_FALLBACK_ENABLED` | true | Rank with the built-in greedy method when the matcher is down |
 | `ORS_API_KEY`, `ORS_BASE_URL` | *(empty)* | OpenRouteService; empty = Haversine × road factor |
-| `ROAD_FACTOR`, `CITY_SPEED_KMH`, `ROUTE_HANDLING_MIN` | 1.3, 22, 20 | Haversine fallback distance/ETA model |
-| `OPEN_METEO_BASE_URL`, `WEATHER_CHECK_ENABLED`, `WEATHER_CHECK_SEC`, `WEATHER_CLOSE_MM_PER_H` | see template, true, 600, 20 | Rain/flood check that re-plans routes |
-| `LLM_PROVIDER` | `none` | `aicore`, `openai-compatible` or `none`. **Everything works with `none`** (template explanations, manual flags) |
-| `AICORE_RESOURCE_GROUP`, `AICORE_MODEL_NAME`, `AICORE_SERVICE_KEY_PATH` | `default`, *(empty)*, `./aicore-key.json` | SAP AI Core generative AI hub |
-| `TRUST_FEED_LLM_ENABLED` | true | Allow LLM parsing of CDSCO alerts (only effective when the LLM is enabled) |
-| `APPROVAL_MODE` | `cap` | `cap` = CAP-native approval flow + timer; `bpa` = SAP Build Process Automation drives it |
-| `BPA_API_URL`, `BPA_DEFINITION_ID`, `BPA_TOKEN_URL`, `BPA_CLIENT_ID`, `BPA_CLIENT_SECRET`, `BPA_DESTINATION` | *(empty)* | BPA workflow-instance API (only for `APPROVAL_MODE=bpa`) |
-| `ALERT_NOTIFICATION_ENABLED`, `ALERT_EMAIL_TO` | false | SAP Alert Notification (optional); otherwise in-app notifications only |
+| `ROAD_FACTOR`, `CITY_SPEED_KMH`, `ROUTE_HANDLING_MIN` | 1.3, 22, 20 | Fallback distance/ETA model |
+| `OPEN_METEO_BASE_URL`, `WEATHER_CHECK_ENABLED`, `WEATHER_CHECK_SEC`, `WEATHER_CLOSE_MM_PER_H` | see template, true, 600, 20 | Rain check that re-plans routes |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `ALERT_EMAIL_FROM` | *(empty)*, 587 | Email alerts; off while `SMTP_HOST` is empty, needs `ALERT_EMAIL_FROM`. One digest per hospital per check to its pharmacists and approvers that saved an email, else the hospital's admin email |
+| `ALERT_EMAIL_TO` | *(empty)* | Fallback recipients (ops list, comma separated): hospitals with no email on file, partner licence reminders |
+| `COURIER_LINK_TTL_HOURS` | 24 | Hard expiry of a courier link |
+| `NEARBY_KM` | 1 | Live tracking: courier this close to the receiver = "Nearby" step |
+| `EXPIRY_ALERT_DAYS` | `90,60,30,7` | Expiry alert tiers in days (one alert per lot for the tightest tier reached, plus one when expired) |
+| `LLM_PROVIDER` | `none` | `none`, `openai-compatible` or `aicore`. **Everything works with `none`** |
+| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | *(empty)* | `openai-compatible`: `POST {LLM_BASE_URL}/chat/completions` |
+| `AICORE_SERVICE_KEY_PATH`, `AICORE_MODEL_NAME`, `AICORE_RESOURCE_GROUP` | `./aicore-key.json`, *(empty)*, `default` | `aicore`: optional SAP AI Core ([SAP_INTEGRATIONS](docs/SAP_INTEGRATIONS.md)) |
+| `TRUST_FEED_LLM_ENABLED` | true | Allow LLM parsing of CDSCO alerts (only when an LLM is on) |
+| `APPROVAL_MODE` | `cap` | `cap` = built-in approvals + timer; `bpa` = optional SAP Build Process Automation |
+| `BPA_API_URL`, `BPA_DEFINITION_ID`, `BPA_TOKEN_URL`, `BPA_CLIENT_ID`, `BPA_CLIENT_SECRET` | *(empty)* | `bpa` only |
+| `ALERT_NOTIFICATION_URL`, `ALERT_NOTIFICATION_CLIENT_ID`, `ALERT_NOTIFICATION_CLIENT_SECRET` | *(empty)* | Optional SAP Alert Notification; when set it **replaces** email as the outbound channel |
+| `SAP_API_HUB_KEY`, `SAP_API_HUB_SANDBOX_BASE`, `SAP_API_MATERIAL_STOCK_PATH`, `SAP_API_BATCH_PATH` | *(empty)*, see template | Optional SAP Business Accelerator Hub sandbox; empty key = offline fixture `seed/sap-sandbox-fixture.json` |
 | `DEFAULT_SAFETY_MARGIN_PCT`, `DEFAULT_COVER_WINDOW_DAYS` | 20, 14 | Cover defaults (overridable per hospital) |
 | `EXPIRY_BUFFER_DAYS`, `NEAR_EXPIRY_DAYS` | 7, 60 | Rule 4 buffer / near-expiry threshold |
 | `SUPPLIER_RESPONSE_TIMEOUT_MIN`, `TIMER_SWEEP_SEC` | 30, 60 | Supplier silence → next supplier |
-| `LONG_ROUTE_KM`, `LONG_ROUTE_MIN` | 25, 90 | Second sign-off "long route" risk rule |
-| `SYNC_INTERVAL_SEC`, `STALE_FEED_MINUTES`, `LICENCE_REMINDER_DAYS` | 900, 60, 30 | Recompute/sync job, stale-feed greying, licence reminders |
+| `LONG_ROUTE_KM`, `LONG_ROUTE_MIN` | 25, 90 | Second sign-off "long route" rule |
+| `SYNC_INTERVAL_SEC`, `STALE_FEED_MINUTES`, `LICENCE_REMINDER_DAYS` | 900, 60, 30 | Sync/recompute job, stale-feed greying, licence reminders |
 | `COLD_CHAIN_MIN_C`, `COLD_CHAIN_MAX_C`, `AMBIENT_MIN_C`, `AMBIENT_MAX_C`, `FROZEN_MIN_C`, `FROZEN_MAX_C` | 2, 8, 2, 30, -25, -15 | Storage ranges for excursions |
 | `TRACE_MAX_GAP_MIN` | 15 | Max gap in the temperature trace for proof of condition |
-| `PATIENT_REF_HASH_SALT` | dev value | Salt for hashing MRNs at source (mock-medisoft, connector) |
-| `TOKEN_STORE`, `TOKEN_STORE_KEY` | auto, *(derived)* | `local` (AES-256-GCM table, dev) or `destination` (BTP Destination service); auto = destination if bound. Set `TOKEN_STORE_KEY` to keep local tokens across restarts |
-| `JOBS_ENABLED`, `DEMO_FRESH_SEED` | true, true | Background jobs / mark seeded hospitals freshly synced at dev start |
-| `APP_TIME_ZONE` | `Asia/Kolkata` | Time zone for times shown to users ("arriving ~3:40 pm") |
+| `JOBS_ENABLED`, `DEMO_FRESH_SEED` | true, true | Background jobs (sync + stock check, timeouts, weather, daily cleanup) / mark seeded hospitals freshly synced at development start |
 | `SEED_AUTO_REFRESH`, `SEED_ANCHOR_DATE` | true, today | Re-run the seed when the date changes / pin the seed date (YYYY-MM-DD) |
 | `SIM_TELEMETRY_INTERVAL_SEC`, `SIM_EXCURSION_ENABLED`, `SIM_EXCURSION_AFTER_TICKS`, `SIM_SPEEDUP` | 5, true, 3, 10 | Simulator cadence / one deliberate excursion / speed |
-| `SIM_USER`, `SIM_PASSWORD`, `SIM_BEARER_TOKEN` | `sim`, `demo`, *(empty)* | Simulator credentials (bearer token for a deployed app) |
-| `PYTHON` | auto | Python executable for `npm run dev` / e2e test |
+| `SIM_USER`, `SIM_PASSWORD`, `SIM_BEARER_TOKEN` | `admin`, `DEMO_PASSWORD`, *(empty)* | Simulator: an admin account that lists the courier links (`GET /admin/courier-links`); or an admin's Bearer token |
+| `PYTHON` | auto | Python executable for `npm run dev` |
 
-**Standalone mode** (see §3b; all in `backend/.env.example`, `npm run env:check` checks them):
+## 6. Accounts and sign-in
 
-| Variable | Default | Used by / meaning |
-|---|---|---|
-| `CDS_PROFILE` | `standalone` | Which standalone profile the npm scripts use (`standalone` / `standalone-pg`). On a host set `CDS_ENV` to it |
-| `DATABASE_URL` | *(empty)* | PostgreSQL connection string (`standalone-pg`); SSL on, `?sslmode=no-verify` for self-signed certificates |
-| `AUTH_JWT_SECRET` | **required** | Signs login tokens (32+ random chars). The server refuses to start without it |
-| `AUTH_JWT_TTL` | `8h` | Login lifetime (`30m`, `8h`, `2d`, or seconds) |
-| `DEMO_PASSWORD` | *(empty)* | Password of the demo users created by `db:init` (8+ chars). Never hard-coded |
-| `TOKEN_ENCRYPTION_KEY` | **required** | AES-256-GCM key for hospital OAuth tokens (32+ chars; `TOKEN_STORE_KEY` is the older name). Keep it stable |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `ALERT_EMAIL_FROM` | *(empty)*, 587 | Email alerts (shortfall, excursion, recall, licence expiring, stale feed) to `ALERT_EMAIL_TO`; off while `SMTP_HOST` is empty |
-| `LLM_PROVIDER=openai-compatible`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | off | Any OpenAI-compatible chat API (`POST {LLM_BASE_URL}/chat/completions`); the number/batch guards still apply |
+MediLink accounts are the only login, in every profile (`srv/auth.js`, `srv/lib/accounts.js`).
 
-## 6. Hybrid mode (bound SAP HANA Cloud)
-
-Click-by-click, from an empty BTP account: [`docs/SAP_GO_LIVE.md`](docs/SAP_GO_LIVE.md). Short version, after the HANA Cloud
-`hana-free` instance is mapped to your CF space:
-```bash
-cf login -a <CF_API_ENDPOINT>
-cf create-service hana hdi-shared medilink-db
-cf create-service destination lite medilink-destination
-cd backend
-cds bind -2 medilink-db
-cds bind -2 medilink-destination
-cds deploy --to hana --profile hybrid
-cds watch --profile hybrid
-```
-Hybrid keeps the **mocked users** (so you can log in locally with the demo users) but uses HANA Cloud (straight-line distances via
-HANA `ST_Distance`) and stores OAuth tokens in the Destination service. XSUAA is created by the deployment (§7), not here. HANA Cloud free tier auto-stops when idle: start it in HANA Cloud Central before working.
-
-## 7. Deploy to Cloud Foundry (free plans only)
-
-```bash
-npm run seed                                   # refresh the date-relative seed right before building
-cp secrets.mtaext.example secrets.mtaext       # fill in random values; never commit it
-mbt build -t mta_archives
-cf deploy mta_archives/medilink_1.0.0.mtar -e secrets.mtaext
-```
-Deploys `medilink-approuter` (the one URL users open: XSUAA login, forwards to CAP incl. WebSockets, serves future UI apps, 128 MB),
-`medilink-srv` (CAP, 256 MB), `medilink-db-deployer` (HDI, runs once), `medilink-matcher` (Python, 512 MB),
-`medilink-medisoft` (mock HIS, 128 MB) and creates/binds `hana/hdi-shared`, `xsuaa/application`, `destination/lite`.
-Check the result with `GET /health/integrations` as an admin.
-Production uses **XSUAA** (no mocked users). Run the simulator locally against the deployed app with
-`APP_BASE_URL=https://<srv-url> SIM_BEARER_TOKEN=<token of a partner user> node simulator/index.js`.
-
-## 8. SAP Build Process Automation contract (or use the CAP-native fallback)
-
-`APPROVAL_MODE=cap` (default) needs nothing: CAP runs supplier accept/decline, approver sign-off with second sign-off,
-and the 30-minute fallback timer itself. To let BPA drive it, set `APPROVAL_MODE=bpa` and model a process that calls
-the MediLink REST API with a technical user holding the `system` scope (a client-credentials token of `medilink-uaa`):
-
-| Step | Call |
+| Call | |
 |---|---|
-| Process start (CAP calls BPA) | `POST {BPA_API_URL}/workflow/rest/v1/workflow-instances` with `{definitionId, context}`; context = `GET /workflow/context(transfer=<id>)` |
-| Supplier form result | `POST /workflow/supplierDecision` `{transfer, decision: ACCEPT\|DECLINE, qty, repaymentMode: IN_KIND\|LANDED_COST, reason, actor}` |
-| Approver form result | `POST /workflow/approvalDecision` `{transfer, decision: APPROVE\|REJECT, reason, actor}` (call twice when `requiresSecondSignoff`) |
-| 30-minute timer boundary event | `POST /workflow/timeout` `{transfer}` → next-ranked supplier |
+| `POST /auth/login {"username","password"}` | `{ token, expiresAt, user }`; then send `Authorization: Bearer <token>` |
+| `POST /auth/logout` · `GET /auth/me` | End the session · who am I (includes `email` when set) |
+| `POST /auth/ws-ticket` | `{ ticket, expiresIn: 30 }`: single-use ticket for `/ws/tracking?ticket=` |
+| admin: `GET /auth/users` · `POST /auth/users` | List · create `{username, password, role, hospital, email?}` |
+| admin: `POST /auth/users/<name>/reset-password` · `/disable` · `/enable` · `/email` | Reset, disable, enable (reset and disable end the user's sessions at once), set the alert email |
 
-## 9. API overview
+Portal sign-in (`/auth/login`) is for `pharmacist`, `approver` (each acts for one hospital) and `admin` only; any other account gets
+`LOGIN_FAILED`. `system` (technical user for SAP Build Process Automation) is API-only via HTTP Basic; scripts may use Basic too.
+Delivery partners have no accounts: courier links are emailed to the partner's dispatch address (when SMTP is on) and shareable by
+the supplying hospital (`courier-link` action); 60 calls/min per link, 1200/min per IP.
 
-**Experience layer (for UIs): `GET /me/home` · `GET /me/onboarding` · `GET /me/journeys/{id}` · `GET /me/city` · `POST /me/actions/{actionId}`**
-(Idempotency-Key aware) and the WebSocket event `journey.updated`; full contract in [`docs/EXPERIENCE_API.md`](docs/EXPERIENCE_API.md).
-Admin: `GET /health/integrations` (which SAP services are connected / on fallback / misconfigured) · `GET /admin/metrics` (PRD §3 success metrics).
+Limits (in memory, per process; 429 `RATE_LIMITED` with `Retry-After`): 5 wrong passwords pause that IP + username for 15 min, plus a
+growing delay per username (250 ms doubling, max 4 s) · `/auth/*` 100 per 5 min per IP · `/ingest` 60/min per IP ·
+`/connector/pair` 10 per 15 min per IP · `/me/actions/*` 60/min per user · licence look-up 20 per 15 min, weather check 5 per 10 min,
+photo preview 10/hour per user. IPv6 clients count per /64. Behind a proxy set `TRUST_PROXY`.
 
-Underlying services:
+## 7. Optional SAP integrations
 
-OData v4 under `/odata/v4/<service>`; REST services at their own paths. Highlights:
+Off by default, each switched on by env only; MediLink works fully without them. Steps: [`docs/SAP_INTEGRATIONS.md`](docs/SAP_INTEGRATIONS.md).
+
+| SAP software | Switch on | When off |
+|---|---|---|
+| SAP AI Core (generative AI hub) | `LLM_PROVIDER=aicore`, `AICORE_MODEL_NAME`, key file at `AICORE_SERVICE_KEY_PATH` | Templates (or `LLM_PROVIDER=openai-compatible`) |
+| SAP Build Process Automation | `APPROVAL_MODE=bpa` + `BPA_*` | Built-in approvals and 30-minute timer |
+| SAP Alert Notification | `ALERT_NOTIFICATION_URL`, `ALERT_NOTIFICATION_CLIENT_ID`, `ALERT_NOTIFICATION_CLIENT_SECRET` | In-app + SMTP email |
+| SAP Business Accelerator Hub sandbox | `SAP_API_HUB_KEY` | Offline fixture |
+
+`GET /health/integrations` (admin) lists, each as connected / fallback / misconfigured: Database, Logins, Hospital access tokens,
+Email alerts (SMTP), SAP Alert Notification, AI (LLM), SAP Build Process Automation, SAP Business Accelerator Hub (sandbox),
+OR-Tools ranking service, OpenRouteService, Open-Meteo, MediSoft HIS.
+
+## 8. API overview
+
+**Experience layer (for UIs):** `GET /me/home` · `GET /me/onboarding` · `GET /me/journeys/{id}` · `GET /me/journeys/{id}/tracking` · `GET /me/city` ·
+`GET /me/stock` · `GET /me/notifications` · `POST /me/actions/{actionId}` (Idempotency-Key aware) and the WebSocket events `journey.updated`, `tracking`;
+contract in [`docs/EXPERIENCE_API.md`](docs/EXPERIENCE_API.md). Courier (no sign-in, `Authorization: Courier <token>`): `GET /courier/job` · `POST /courier/pickup|location|road-closed`.
+Admin: `GET /health/integrations` · `GET /admin/metrics` (PRD §3 success metrics) · `GET /admin/courier-links`.
+
+Underlying services: OData v4 under `/odata/v4/<service>`; REST services at their own paths. Highlights:
 `POST /onboarding/licence` · `GET /oauth/medisoft/callback` · `POST /onboarding/revokeAccess` · `POST /connector/pair` · `POST /ingest` (connector token) ·
-`POST /sync/uploadSheet` · `POST /sync/uploadPhoto` (stock-register photo, LLM; preview then confirm) · `POST /sync/syncNow` · `cover/board(window=7|14|21)` · `cover/shortfall(drug=…)` · `cover/cityView` ·
+`POST /sync/uploadSheet` · `POST /sync/uploadPhoto` · `POST /sync/syncNow` · `cover/board(window=7|14|21)` · `cover/shortfall(drug=…)` · `cover/cityView` ·
 `requests/createRequest` · `requests/rank` · `requests/choosePlan` · `supplier/review|accept|decline` · `approval/approveTransfer|rejectTransfer` ·
-`delivery/pickupScan|telemetry|activeShipments` · `routes/setRouteClosed|checkWeather` · `receipt/arrivalScan` · `ledger/settleLoan` ·
-`GET /audit/verify` · `trust/recall|parseAlert` · WebSocket `ws://<host>/ws/tracking` (events `telemetry`, `excursion`, `replan`, `status`, `alert`, `journey.updated`; each user only receives their own deliveries) ·
+`delivery/*` (admin only) · `routes/setRouteClosed|checkWeather` · `receipt/arrivalScan` · `ledger/settleLoan` ·
+`GET /audit/verify` · `trust/recall|parseAlert` · `/workflow/*` (SAP Build Process Automation contract) ·
+WebSocket `wss://<host>/ws/tracking?ticket=<from POST /auth/ws-ticket>` (events `tracking`, `excursion`, `replan`, `status`, `alert`, `journey.updated`; each user only receives their own hospital's) ·
 matcher `POST /rank`. Every hard-rule exclusion is returned as `{rule, ruleName, code, detail}`.
 
-## 10. Performance (PRD §12, 50 hospitals)
+## 9. Performance (PRD §12, 50 hospitals)
 
-Measured by `backend/test/perf.test.js` (part of `npm test`): 5 demo + 45 synthetic hospitals (`seed/generate.js` `scale()`),
-real OR-Tools matcher, in-memory SQLite, end-to-end HTTP, Windows 11 laptop, 1 Nov 2026.
+Measured by `backend/test/perf.test.js` (part of `npm test`): 5 demo + 45 synthetic hospitals, real OR-Tools matcher,
+in-memory SQLite, end-to-end HTTP, Windows 11 laptop, 1 Nov 2026.
 
 | Call | Target | Measured (best / worst of 3-5 runs) |
 |---|---|---|
@@ -301,24 +267,15 @@ real OR-Tools matcher, in-memory SQLite, end-to-end HTTP, Windows 11 laptop, 1 N
 | Home screen `GET /me/home` (admin, all journeys) | < 1 s | 26 ms / 32 ms |
 | City view `GET /me/city` over 50 hospitals | < 2 s | 68 ms / 84 ms |
 
-Nothing needed fixing. HANA Cloud latency is not measured here (no account yet).
+Not yet measured on the SQLite **file** that production uses (WAL mode).
 
-## 11. Interpretation choices (where the PRD left room)
+## 10. Interpretation choices (where the PRD left room)
 
-- Cover window = today + next N−1 days; a lot covers a dose only if it expires **strictly after** the dose date; allocation is earliest-expiry-first (exact for this deadline structure).
+- Cover window = today + next N−1 days; a lot covers a dose only if it expires **strictly after** the dose date; allocation is earliest-expiry-first.
 - Safety margin = `ceil(booked × pct / 100)` on own booked demand; surplus is 0 while any own dose is short.
 - "Licence valid on transfer date" uses today's date; rule 8 compares ETA with end of the needed-by day (UTC).
-- A stale supplier feed excludes its lots (`STALE_FEED`, reported under rule 1).
+- A stale supplier feed excludes its lots (`STALE_FEED`, reported under rule 1); a disconnected hospital's stock is never offered.
 - Lowering the offered quantity trims the longest-expiry lots first and routes the remainder to the next supplier.
 - Second sign-off must be a different approver than the first.
 - Landed cost = quantity × drug unit cost (synthetic INR); the real formula is a PRD open question.
-
-## 12. Manual steps you still have to do
-
-1. BTP cockpit work from [`docs/SAP_GO_LIVE.md`](docs/SAP_GO_LIVE.md) (account, entitlements, HANA Cloud instance + mapping, boosters). Cannot be scripted from here.
-2. Fill `backend/.env` (random secrets; `LLM_PROVIDER=none` unless AI Core is set up) and, for deployment, `secrets.mtaext`.
-3. Optional keys: SAP Business Accelerator Hub API key (confirm the sandbox paths with *Try out*), OpenRouteService token.
-4. After deploying: in BTP cockpit → Security → Roles, create roles from the `pharmacist` / `approver` templates with a `hospital` value (e.g. `H1`) and from `partner` with a `partner` value (e.g. `P1`), put them in role collections and assign users. `MediLink_Admin` is predefined.
-5. Optional BPA: model the process in the BPA editor using the contract in §8, then set `APPROVAL_MODE=bpa` and the `BPA_*` variables.
-6. Optional AI Core: download the service key to `backend/aicore-key.json`, set `LLM_PROVIDER=aicore` and `AICORE_MODEL_NAME`.
-7. Before a demo: start HANA Cloud (it auto-stops), and rebuild/redeploy after `npm run seed` if the seed dates are old.
+- Low stock = usable units ≤ reorder level (the hospital's level, else the medicine's default; neither = not watched). Expiry alerts only for the tightest tier reached.

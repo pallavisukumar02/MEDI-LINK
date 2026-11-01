@@ -2,12 +2,13 @@
 /*
  * "What needs me now": the home screen (GET /me/home), the onboarding checklist (GET /me/onboarding) and the
  * plain-language city view (GET /me/city). Everything is derived from existing state and filtered to the
- * user's role and hospital / partner. Task cards come from journeys, so a card and its journey never disagree.
+ * user's role and hospital. Task cards come from journeys, so a card and its journey never disagree.
  */
 const config = require('./config');
 const coverdb = require('./coverdb');
 const journey = require('./journey');
 const llm = require('./llm');
+const monitor = require('./monitor');
 const { t } = require('./messages');
 const { matchFlag } = require('./rules');
 const { action, field } = require('./actions');
@@ -16,7 +17,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const daysUntil = d => Math.round((Date.parse(String(d).slice(0, 10)) - Date.parse(today())) / 86400000);
 const URGENCY = { high: 0, medium: 1, low: 2 };
 // within a severity: what can hurt a patient today comes first
-const ALERT_ORDER = { EXCURSION: 0, RECALL: 1, SHORTFALL: 2, LICENCE_EXPIRY: 3, STALE_FEED: 4, BELOW_MARGIN: 5 };
+const ALERT_ORDER = { EXCURSION: 0, RECALL: 1, SHORTFALL: 2, LICENCE_EXPIRY: 3, STALE_FEED: 4, BELOW_MARGIN: 5, EXPIRED: 6, OUT_OF_STOCK: 7, EXPIRING: 8, LOW_STOCK: 9 };
 
 function ago(ts) {
   const min = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
@@ -106,7 +107,6 @@ function taskOf(j, viewer) {
       const risks = (j.risks || []).map(r => t(`risk.${r}`)).join(', ');
       return card('approve', 'high', j.neededBy, { risks: j.key === 'waiting_second_approval' ? t('task.approve.second', { risks }) : risks ? `Check: ${risks}.` : '' });
     }
-    case 'waiting_pickup': return j.perspective === 'partner' ? card('pickup', 'high', j.neededBy, { from: j.from, to: j.to, note: j.note || '' }) : null;
     case 'arrived': return j.perspective === 'receiver' ? card('arrival', 'high', null) : null;
     case 'excursion': return j.perspective === 'receiver' && j.stage === 6 ? card('arrival', 'high', null, { subtitleKey: 'task.arrival.subtitle_excursion' }) : null;
     case 'done': return j.loan?.status === 'OPEN' && j.perspective === 'receiver' && primary.id === 'mark-loan-paid' ? card('repay', 'low', null, { amount: j.loan.amount.toLocaleString('en-IN') }) : null;
@@ -135,6 +135,7 @@ async function hospitalAlerts(h, validTill, board, viewer) {
   for (const r of board.filter(r => r.status === 'GREEN' && r.belowMargin)) {
     out.push({ kind: 'BELOW_MARGIN', severity: 'amber', drugId: r.drugId, message: t('alert.below_margin', { drug: `${r.genericName} ${String(r.strength).split('/')[0]}` }) });
   }
+  out.push(...await monitor.homeAlerts(h.ID)); // low stock and expiry, until resolved or acknowledged
   return out;
 }
 
@@ -150,7 +151,8 @@ function coverSummary(board, windowDays) {
 
 // ---------------------------------------------------------------- home
 async function home(viewer) {
-  const res = { user: { id: viewer.userId, role: viewer.role }, greeting: t(`home.greeting.${viewer.role}`) || '', hospital: null, partner: null, onboarding: null, alerts: [], tasks: [], journeys: [], coverSummary: null, empty: {} };
+  const res = { user: { id: viewer.userId, role: viewer.role }, greeting: t(`home.greeting.${viewer.role}`) || '', hospital: null, onboarding: null, alerts: [], tasks: [], journeys: [], coverSummary: null, empty: {} };
+  res.stockSummary = null; // { out, low, expiring, expired, text, emptyText } for hospital users
   let board = [];
   if (viewer.hospitalId) {
     const { h, validTill } = await hospitalAndLicence(viewer.hospitalId);
@@ -163,6 +165,7 @@ async function home(viewer) {
         connection: { status: conn, connected: !!h.connected, lastSyncedAt: h.lastSyncedAt || null, text: t(`home.connection.${conn}`, { ago: h.lastSyncedAt ? ago(h.lastSyncedAt) : '' }) },
       };
       res.coverSummary = coverSummary(board, window);
+      res.stockSummary = await monitor.summary(h.ID);
       res.alerts.push(...await hospitalAlerts(h, validTill, board, viewer));
       const ob = await onboarding(viewer);
       if (ob && !ob.done) {
@@ -171,11 +174,6 @@ async function home(viewer) {
         if (!h.connected && ob.nextAction) res.hospital.connection.action = ob.nextAction;
       }
     }
-  }
-  if (viewer.partnerId) {
-    const p = await SELECT.one.from('medilink.DeliveryPartners').where({ ID: viewer.partnerId });
-    const lic = await SELECT.one.from('medilink.Licences').where({ partyId: viewer.partnerId, partyType: 'PARTNER' });
-    if (p) res.partner = { id: p.ID, name: p.name, licence: licenceState(lic?.validTill) };
   }
   if (viewer.role === 'admin') {
     const hs = await SELECT.from('medilink.Hospitals');
@@ -190,7 +188,7 @@ async function home(viewer) {
     }
   }
   for (const j of journeys) {
-    if (j.key === 'excursion' && j.perspective !== 'partner') res.alerts.push({ kind: 'EXCURSION', severity: 'red', journeyId: j.id, drugId: j.drug.id, message: t('alert.excursion', { drug: j.drug.name }) });
+    if (j.key === 'excursion') res.alerts.push({ kind: 'EXCURSION', severity: 'red', journeyId: j.id, drugId: j.drug.id, message: t('alert.excursion', { drug: j.drug.name }) });
     const card = taskOf(j, viewer);
     if (card) res.tasks.push(card);
   }
@@ -199,7 +197,7 @@ async function home(viewer) {
   res.tasks.sort((a, b) => URGENCY[a.urgency] - URGENCY[b.urgency] || String(a.dueBy || '9').localeCompare(String(b.dueBy || '9')));
   if (!res.tasks.length) res.empty.tasks = t('empty.tasks');
   if (!res.alerts.length) res.empty.alerts = t('empty.alerts');
-  if (!res.journeys.length) res.empty.journeys = t(viewer.role === 'partner' ? 'empty.partner' : 'empty.journeys');
+  if (!res.journeys.length) res.empty.journeys = t('empty.journeys');
   return res;
 }
 

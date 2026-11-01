@@ -1,5 +1,5 @@
 'use strict';
-// Resolve which hospital / partner a user acts for. Admins may act for any hospital via a parameter.
+// Resolve which hospital a user acts for. Admins may act for any hospital via a parameter.
 const isAdmin = req => req.user?.is?.('admin');
 
 function hospitalOf(req, explicit) {
@@ -10,8 +10,4 @@ function hospitalOf(req, explicit) {
   if (!ownId && !isAdmin(req)) return req.reject(403, 'NO_HOSPITAL: your user has no hospital attribute');
   return ownId || explicit;
 }
-function partnerOf(req) {
-  const p = req.user?.attr?.partner;
-  return Array.isArray(p) ? p[0] : p;
-}
-module.exports = { hospitalOf, partnerOf, isAdmin };
+module.exports = { hospitalOf, isAdmin };

@@ -90,16 +90,13 @@ function forJourney(j, { r, lead, legs, viewer, ctx }) {
       }
     }
   }
-  if (j.perspective === 'partner' && lead && role === 'partner') {
-    if (lead.status === 'ASSIGNED') {
-      out.push(action('pickup-scan', {
-        body: { transferId: tid },
-        fields: [field('batchNo', 'barcode', { hint: t('field.batchNo.hint', { batches }) }), field('sealId', 'barcode'), field('loggerId', 'barcode')],
-      }));
-    }
+  // the courier has no account: the sending hospital (or admin) shares its per-delivery link, or replaces it
+  if (['ASSIGNED', 'IN_TRANSIT'].includes(lead?.status) && (j.perspective === 'admin' || (j.perspective === 'supplier' && ['pharmacist', 'approver'].includes(role)))) {
+    out.push(action('courier-link', { style: 'secondary', body: { transferId: tid } }));
+    out.push(action('reissue-courier-link', { style: 'secondary', body: { transferId: tid }, confirm: true }));
   }
-  // road closures can be reported by the courier or either hospital's pharmacist while the medicine moves
-  if (['ASSIGNED', 'IN_TRANSIT'].includes(lead?.status) && (role === 'partner' || (role === 'pharmacist' && j.perspective !== 'admin'))) {
+  // road closures can be reported by either hospital's pharmacist (the courier reports through its link)
+  if (['ASSIGNED', 'IN_TRANSIT'].includes(lead?.status) && role === 'pharmacist' && j.perspective !== 'admin') {
     out.push(action('report-road-closed', { style: 'secondary', body: { transferId: tid }, confirm: true, fields: [optional(field('note', 'text', { label: 'roadNote' }))] }));
   }
   // loans: either pharmacist may settle (PRD section 10, "Settle loan")
@@ -252,19 +249,28 @@ const REGISTRY = {
       return { message: 'Rejected. MediLink will ask the next nearest hospital.', journeyId: await journeyIdOfTransfer(transferId) };
     },
   },
-  'pickup-scan': {
-    roles: ['partner', 'admin'], input: { transferId: 'id!', batchNo: 'string!', sealId: 'string!', loggerId: 'string!' },
-    async run({ transferId, batchNo, sealId, loggerId }) {
-      await call('DeliveryService', 'pickupScan', { transfer: transferId, batchNo, sealId, loggerId });
-      return { message: 'Pickup recorded. Tracking is live.', journeyId: await journeyIdOfTransfer(transferId) };
+  // secret: the response carries a capability link, so it is never stored as an idempotent replay
+  'courier-link': {
+    roles: ['pharmacist', 'approver', 'admin'], input: { transferId: 'id!' }, secret: true,
+    async run({ transferId }, viewer) {
+      const link = await require('./courier').show(transferId, viewer);
+      return { message: t('courier.link.shown'), result: link, journeyId: await journeyIdOfTransfer(transferId) };
+    },
+  },
+  'reissue-courier-link': {
+    roles: ['pharmacist', 'approver', 'admin'], input: { transferId: 'id!' }, secret: true,
+    async run({ transferId }, viewer) {
+      const link = await require('./courier').reissue(transferId, viewer);
+      return { message: t('courier.link.reissued'), result: link, journeyId: await journeyIdOfTransfer(transferId) };
     },
   },
   'report-road-closed': {
-    roles: ['partner', 'pharmacist', 'admin'], input: { transferId: 'id!', note: 'text' },
+    roles: ['pharmacist', 'admin'], input: { transferId: 'id!', note: 'text' },
     async run({ transferId, note }) {
       const r = await call('RouteService', 'setRouteClosed', { transfer: transferId, closed: true, note: note || 'Road closed' });
       const { fmtClock } = require('./journey');
-      return { message: r.open ? `Re-routed. New arrival time about ${fmtClock(Date.now() + r.etaMin * 60000)}.` : 'No open road right now. The courier will wait at a safe place.', journeyId: await journeyIdOfTransfer(transferId) };
+      const { eta } = await SELECT.one.from('medilink.Transfers').columns('eta').where({ ID: transferId }); // same time the journey shows
+      return { message: r.open ? `Re-routed. New arrival time about ${fmtClock(eta || Date.now() + r.etaMin * 60000)}.` : 'No open road right now. The courier will wait at a safe place.', journeyId: await journeyIdOfTransfer(transferId) };
     },
   },
   'accept-delivery': {
@@ -295,6 +301,23 @@ const REGISTRY = {
       await call('LedgerService', 'settleLoan', { loan: loanId, mode: 'IN_KIND', settlementTransfer });
       const l = await SELECT.one.from('medilink.Ledger').columns('transfer_ID').where({ ID: loanId });
       return { message: 'Loan repaid with the return delivery.', journeyId: l && await journeyIdOfTransfer(l.transfer_ID) };
+    },
+  },
+  // stock and expiry monitoring (lib/monitor.js); hospital checks happen there
+  'ack-alert': {
+    roles: ['pharmacist', 'approver', 'admin'], input: { notificationId: 'id!' },
+    run: ({ notificationId }, viewer) => require('./monitor').ack(viewer, notificationId),
+  },
+  'set-reorder-level': {
+    roles: ['pharmacist', 'approver', 'admin'], input: { drugId: 'string!', minUnits: 'number!', hospital: 'string' },
+    run: (input, viewer) => require('./monitor').setReorderLevel(viewer, input),
+  },
+  'set-alert-email': {
+    roles: ['pharmacist', 'approver', 'admin'], input: { email: 'string' },
+    async run({ email }, viewer) {
+      const u = await require('./accounts').setEmail(viewer.userId, email);
+      await require('./audit').log(viewer.userId, 'ALERT_EMAIL_SET', { user: viewer.userId, email: u.email ? 'set' : 'cleared' });
+      return { message: u.email ? t('home.email.set', { email: u.email }) : t('home.email.cleared'), result: { email: u.email || null } };
     },
   },
 };

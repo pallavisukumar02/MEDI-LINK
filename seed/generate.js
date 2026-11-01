@@ -83,6 +83,9 @@ const DRUGS = [
   { ID: 'D-RITU500', genericName: 'Rituximab', strength: '500 mg/50 mL', dosageForm: 'Injection', storageClass: 'COLD', unitCost: 26000 },
 ].map(d => ({ ...d, criticalFlag: true, nlemSection: 'NLEM 2022 s.8' }));
 const drugById = Object.fromEntries(DRUGS.map(d => [d.ID, d]));
+// Default reorder levels in units (low-stock alerts when a hospital set none); synthetic, about a week of typical use.
+const REORDER_LEVELS = { 'D-CARB450': 10, 'D-CARB150': 5, 'D-CISP50': 3, 'D-OXAL100': 4, 'D-PACL260': 4, 'D-DOXO50': 4, 'D-CYCL500': 4, 'D-5FU500': 3, 'D-GEMC1G': 4, 'D-TRAS440': 2, 'D-BORT2': 2, 'D-RITU500': 2 };
+for (const d of DRUGS) d.reorderLevel = REORDER_LEVELS[d.ID];
 
 const BRANDS = { // fictional brands / manufacturers
   'D-CARB450': [['Carbokem', 'Sunrise Oncology Ltd (synthetic)'], ['Platinex', 'Medora Labs (synthetic)']],
@@ -120,9 +123,9 @@ function build(anchor, now = new Date()) {
     { ID: 'LIC-P3', partyId: 'P3', partyType: 'PARTNER', licenceNo: 'KA-BLR-CC-2003', licenceType: 'Wholesale + cold-chain carrier (synthetic)', validTill: day(-20) },
   ];
   const PARTNERS = [
-    { ID: 'P1', name: 'CoolRoute Logistics (synthetic)', licenceNo: 'KA-BLR-CC-2001', coldChainCertified: true, storageClasses: 'AMBIENT,COLD', active: true, lat: 12.9716, long: 77.5946 },
-    { ID: 'P2', name: 'QuickMeds Couriers (synthetic)', licenceNo: 'KA-BLR-CC-2002', coldChainCertified: false, storageClasses: 'AMBIENT', active: true, lat: 12.9580, long: 77.6400 },
-    { ID: 'P3', name: 'FrostLine Express (synthetic, licence expired)', licenceNo: 'KA-BLR-CC-2003', coldChainCertified: true, storageClasses: 'AMBIENT,COLD,FROZEN', active: true, lat: 13.0100, long: 77.5500 },
+    { ID: 'P1', name: 'CoolRoute Logistics (synthetic)', licenceNo: 'KA-BLR-CC-2001', coldChainCertified: true, storageClasses: 'AMBIENT,COLD', active: true, lat: 12.9716, long: 77.5946, dispatchEmail: 'dispatch@coolroute.example' },
+    { ID: 'P2', name: 'QuickMeds Couriers (synthetic)', licenceNo: 'KA-BLR-CC-2002', coldChainCertified: false, storageClasses: 'AMBIENT', active: true, lat: 12.9580, long: 77.6400, dispatchEmail: 'dispatch@quickmeds.example' },
+    { ID: 'P3', name: 'FrostLine Express (synthetic, licence expired)', licenceNo: 'KA-BLR-CC-2003', coldChainCertified: true, storageClasses: 'AMBIENT,COLD,FROZEN', active: true, lat: 13.0100, long: 77.5500, dispatchEmail: 'dispatch@frostline.example' },
   ];
 
   // ---- lots & bookings per hospital ----
@@ -194,6 +197,19 @@ function build(anchor, now = new Date()) {
     }
   }
 
+  // Stock and expiry alerts for the demo (backend/srv/lib/monitor.js), on medicines no other demo step uses:
+  //   H5 (ravi): trastuzumab out of stock (its only lot expired 3 days ago), fluorouracil low (hospital level 8),
+  //              lots expiring in 85, 25 and 5 days (plus carboplatin SOL24B077 at 45 days, above).
+  //   H1 (asha, once connected): gemcitabine out of stock + expired lot, doxorubicin low (hospital level 6).
+  lot('H5', 'H5-TRAS-X', 'D-TRAS440', 0, 'NB24T019', 1, -3);
+  lot('H5', 'H5-GEMC1G-X', 'D-GEMC1G', 0, 'GEMC24S085', 4, 85);
+  lot('H5', 'H5-RITU500-X', 'D-RITU500', 0, 'RITU24S025', 2, 25);
+  lot('H5', 'H5-BORT2-X', 'D-BORT2', 0, 'BORT24S005', 2, 5);
+  lot('H1', 'H1-GEMC1G-X', 'D-GEMC1G', 0, 'GEMC24S997', 3, -3);
+  lot('H1', 'H1-DOXO50-X', 'D-DOXO50', 0, 'DOXO24S203', 3, 200);
+  const THRESHOLDS = [['H5', 'D-5FU500', 8], ['H1', 'D-DOXO50', 6]]
+    .map(([h, drug, minUnits]) => ({ hospital_ID: h, drug_ID: drug, minUnits, updatedAt: nowIso, updatedBy: 'seed (synthetic)' }));
+
   // ---- CAP CSV rows ----
   const capLots = [];
   const capBookings = [];
@@ -236,7 +252,7 @@ function build(anchor, now = new Date()) {
 
   const MATERIALS = capLots.filter(l => l.hospital_ID === 'H2').map(l => ({ material: 'MLK-' + l.ID, drug_ID: l.drug_ID, hospital_ID: 'H2', brandName: l.brandName, manufacturer: l.manufacturer }));
 
-  return { HOSPITALS, DRUGS, LICENCES, PARTNERS, lots, bookings, capLots, capBookings, FLAGS, REQUESTS, TRANSFERS, TRANSFER_LOTS, APPROVALS, LEDGER, AUDIT, MATERIALS, anchor: iso(anchor), day };
+  return { HOSPITALS, DRUGS, LICENCES, PARTNERS, lots, bookings, capLots, capBookings, FLAGS, REQUESTS, TRANSFERS, TRANSFER_LOTS, APPROVALS, LEDGER, AUDIT, MATERIALS, THRESHOLDS, anchor: iso(anchor), day };
 }
 
 // Real Bengaluru localities (OpenStreetMap); the hospitals placed there are fictional.
@@ -287,9 +303,9 @@ function write(data, { quiet } = {}) {
   for (const d of Object.values(OUT)) fs.mkdirSync(d, { recursive: true });
   const w = (name, rows, cols) => fs.writeFileSync(path.join(OUT.cap, `medilink-${name}.csv`), csv(rows, cols));
   w('Hospitals', data.HOSPITALS, ['ID', 'licenceNo', 'name', 'address', 'lat', 'long', 'licenceValidTill', 'software', 'safetyMarginPct', 'coverWindowDays', 'connected', 'lastSyncedAt', 'feedStale', 'adminEmail', 'synthetic']);
-  w('Drugs', data.DRUGS, ['ID', 'genericName', 'strength', 'dosageForm', 'criticalFlag', 'storageClass', 'nlemSection', 'unitCost']);
+  w('Drugs', data.DRUGS, ['ID', 'genericName', 'strength', 'dosageForm', 'criticalFlag', 'storageClass', 'nlemSection', 'unitCost', 'reorderLevel']);
   w('Licences', data.LICENCES, ['ID', 'partyId', 'partyType', 'licenceNo', 'licenceType', 'validTill']);
-  w('DeliveryPartners', data.PARTNERS, ['ID', 'name', 'licenceNo', 'coldChainCertified', 'storageClasses', 'active', 'lat', 'long']);
+  w('DeliveryPartners', data.PARTNERS, ['ID', 'name', 'licenceNo', 'coldChainCertified', 'storageClasses', 'active', 'lat', 'long', 'dispatchEmail']);
   w('Lots', data.capLots, ['ID', 'hospital_ID', 'drug_ID', 'brandName', 'manufacturer', 'batchNo', 'quantity', 'expiryDate', 'storageClass', 'sealed', 'quarantined', 'source', 'lastSynced']);
   w('Bookings', data.capBookings, ['ID', 'hospital_ID', 'patientRef', 'drug_ID', 'doseUnits', 'scheduledDate', 'intent', 'source']);
   w('Flags', data.FLAGS, ['ID', 'batchNo', 'manufacturer', 'drug_ID', 'genericName', 'reason', 'source', 'date', 'active', 'synthetic']);
@@ -300,6 +316,7 @@ function write(data, { quiet } = {}) {
   w('Ledger', data.LEDGER, ['ID', 'lender_ID', 'borrower_ID', 'drug_ID', 'qty', 'landedCost', 'repaymentMode', 'status', 'transfer_ID']);
   w('AuditLog', data.AUDIT, ['seq', 'actor', 'action', 'payload', 'loggedAt', 'hash', 'prevHash']);
   w('MaterialMappings', data.MATERIALS, ['material', 'drug_ID', 'hospital_ID', 'brandName', 'manufacturer']);
+  w('StockThresholds', data.THRESHOLDS, ['hospital_ID', 'drug_ID', 'minUnits', 'updatedAt', 'updatedBy']);
 
   // ---- mock MediSoft HIS (tenants H1, H5). Raw MRNs live only here, inside the "HIS". ----
   const tenant = (h, user) => ({

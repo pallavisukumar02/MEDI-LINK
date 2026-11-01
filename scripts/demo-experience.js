@@ -2,21 +2,20 @@
 'use strict';
 /*
  * npm run demo:experience  ->  the PRD section 18 demo through the experience layer (/me/*) only, against a RUNNING,
- * freshly started dev stack (npm run dev). At every beat it prints each user's home screen in plain language,
- * the way a beginner-friendly UI would show it. Synthetic data, mocked users, no SAP credentials.
- * Not /me: the MediSoft login popup (the hospital software's own screen) and the courier's temperature logger feed.
- * The dev database is in memory: restart `npm run dev` before running this (or `npm run demo`) again.
+ * dev stack on a fresh database (npm run dev). At every beat it prints each user's home screen in plain language,
+ * the way a beginner-friendly UI would show it. Synthetic data, demo users signed in through POST /auth/login.
+ * Not /me: the MediSoft login popup (the hospital software's own screen) and the courier's link (/courier/*: the rider's
+ * phone and the temperature logger; couriers have no MediLink account).
+ * The demo changes the data: before running this (or npm run demo) again, stop npm run dev, npm run db:reset, start it.
  */
 const BASE = (process.env.APP_BASE_URL || 'http://localhost:4004').replace(/\/$/, '');
 const MS = (process.env.MEDISOFT_BASE_URL || 'http://localhost:4100').replace(/\/$/, '');
 require('../simulator/index.js').loadEnv(require('path').join(__dirname, '..', 'backend', '.env')); // DEMO_PASSWORD (never printed)
-// development: mocked users (Basic, password "demo"); standalone: real logins through POST /auth/login (JWT)
-let standalone = false;
+// real logins through POST /auth/login (JWT), password DEMO_PASSWORD
 const tokens = {};
 async function auth(u) {
-  if (!standalone) return 'Basic ' + Buffer.from(`${u}:demo`).toString('base64');
   if (!tokens[u]) {
-    const r = await fetch(BASE + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: process.env.DEMO_PASSWORD || '' }) });
+    const r = await fetch(BASE + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: process.env.DEMO_PASSWORD || 'demo' }) });
     const body = await r.json();
     if (r.status !== 200) { console.error(`Login as ${u} failed: ${body.title}. ${body.fix}`); process.exit(1); }
     tokens[u] = 'Bearer ' + body.token;
@@ -35,17 +34,20 @@ async function api(method, path, user, body, headers = {}) {
 const home = async u => (await api('GET', '/me/home', u)).data;
 let taps = 0;
 const tap = (u, a, values = {}) => api('POST', a.path, u, { ...(a.body || {}), ...values }, { 'Idempotency-Key': `demo-${Date.now()}-${++taps}` });
-const device = body => api('POST', '/odata/v4/delivery/telemetry', 'sim', body); // courier's logger feed
+async function courier(method, path, token, body) { // what courier.html sends: the link's token, no sign-in
+  const res = await fetch(BASE + path, { method, headers: { Authorization: 'Courier ' + token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  return { status: res.status, data: await res.json() };
+}
 const task = (h, kind) => h.tasks.find(t => t.kind === kind);
 
 let failures = 0;
 const beat = t => console.log(`\n${C.b('━━ ' + t + ' ' + '━'.repeat(Math.max(0, 70 - t.length)))}`);
 const check = (cond, msg) => { console.log(`  ${cond ? C.green('✔') : C.red('✘')} ${msg}`); if (!cond) failures++; return cond; };
-const must = (cond, msg) => { if (!check(cond, msg)) { console.log('\nDemo stopped. Is `npm run dev` running with a fresh (restarted) database?'); process.exit(1); } };
+const must = (cond, msg) => { if (!check(cond, msg)) { console.log('\nDemo stopped. Is `npm run dev` running on a fresh database (stop it, npm run db:reset, start it again)?'); process.exit(1); } };
 const said = (who, r) => console.log(`  ${C.cyan(who + ' tapped')} → ${r.status === 200 ? r.data.message : C.red(`${r.data.title}: ${r.data.message} ${C.dim('(' + r.data.fix + ')')}`)}`);
 
 function show(user, h) {
-  const who = h.hospital?.name || h.partner?.name || 'MediLink';
+  const who = h.hospital?.name || 'MediLink';
   console.log(`\n  ${C.b(`${user} (${h.user.role})`)} · ${who} ${C.dim('· ' + h.greeting)}`);
   if (h.hospital) console.log(`    ${h.hospital.connection.text} · ${h.hospital.licence.text}`);
   if (h.coverSummary) console.log(`    Cover: ${h.coverSummary.text}${h.coverSummary.emptyText ? C.dim(' · ' + h.coverSummary.emptyText) : ''}`);
@@ -69,8 +71,8 @@ async function allowInMediSoft(url) {
 }
 
 (async () => {
-  try { standalone = (await (await fetch(BASE + '/health')).json()).mode === 'standalone'; } catch { console.error(`CAP is not reachable at ${BASE}. Start it with: npm run dev`); process.exit(1); }
-  console.log(C.b(`MediLink demo through the experience layer (/me/*) - SYNTHETIC data, ${standalone ? 'standalone mode, real logins (POST /auth/login)' : 'mocked users'}, no SAP credentials`));
+  try { await fetch(BASE + '/health'); } catch { console.error(`CAP is not reachable at ${BASE}. Start it with: npm run dev`); process.exit(1); }
+  console.log(C.b('MediLink demo through the experience layer (/me/*) - SYNTHETIC data, demo users signed in with POST /auth/login, no SAP credentials'));
 
   beat('1. Onboarding: licence number + Allow');
   const ob = (await api('GET', '/me/onboarding', 'asha')).data;
@@ -104,26 +106,34 @@ async function allowInMediSoft(url) {
   said('meera', await tap('meera', task(await home('meera'), 'approve').primaryAction));
   const k = task(await home('kiran'), 'approve');
   if (k) said('kiran', await tap('kiran', k.primaryAction));
-  await showAll('asha', 'ravi', 'partner');
+  await showAll('asha', 'ravi');
 
-  beat('5. Pickup, live tracking, road closed, temperature spike on another shipment');
-  const pk = task(await home('partner'), 'pickup');
-  must(pk, `partner: ${pk?.title} · ${pk?.subtitle}`);
-  const batches = pk.primaryAction.fields[0].hint.replace(/^Expected: /, '');
-  said('partner', await tap('partner', pk.primaryAction, { batchNo: batches, sealId: 'SEAL-9001', loggerId: 'LOG-9001' }));
+  beat('5. Courier link, pickup, live tracking, road closed, temperature spike on another shipment');
   const jid = (await home('asha')).journeys.find(j => j.drug.id === 'D-CARB450');
+  const share = await tap('ravi', (await home('ravi')).journeys.find(j => j.id === jid.id).actions.find(a => a.id === 'courier-link'));
+  said('ravi', share);
+  must(share.status === 200, `ravi shares the courier link (copy / QR; also emailed to the partner when SMTP is on): ${share.data.result?.url?.replace(/#t=.*/, '#t=…')}`);
+  const token = new URL(share.data.result.url).hash.replace(/^#t=/, '');
+  const job = (await courier('GET', '/courier/job', token)).data;
+  must(job.next === 'pickup', `courier opens it: pick up ${job.qty} x ${job.drug?.name} at ${job.pickup?.name}, deliver to ${job.drop?.name}`);
+  const links = (await api('GET', '/admin/courier-links', 'admin')).data.links;
+  const batches = links.find(l => l.transferId === jid.transferId).batches.join(', '); // the labels on the boxes
+  said('courier', await courier('POST', '/courier/pickup', token, { batchNo: batches, sealId: 'SEAL-9001', loggerId: 'LOG-9001', riderName: 'Demo rider (synthetic)' }));
   const H1 = { lat: 12.9299, long: 77.5826 }, H5 = { lat: 12.9255, long: 77.5468 };
   const at = f => ({ lat: H5.lat + (H1.lat - H5.lat) * f, long: H5.long + (H1.long - H5.long) * f });
-  await device({ transfer: jid.transferId, ...at(0.2), temperatureC: 24.4 });
+  const device = body => courier('POST', '/courier/location', token, body); // rider's phone / logger
+  await device({ ...at(0.2), temperatureC: 24.4 });
   await showAll('asha');
-  const road = (await home('partner')).journeys.find(j => j.id === jid.id).actions.find(a => a.id === 'report-road-closed');
-  said('partner', await tap('partner', road, { note: 'Silk Board junction' }));
-  await device({ loggerId: 'LOG-7781', lat: 12.95, long: 77.69, temperatureC: 11.4 }); // the seeded cold-chain shipment spikes
+  const live = (await api('GET', `/me/journeys/${jid.id}/tracking`, 'asha')).data.legs?.[0];
+  must(live, `asha's live map: ${live?.steps.map(x => (x.done ? C.green(x.label) : C.dim(x.label))).join(' → ')} · ${live?.etaText} · ${live?.temperature.current} °C`);
+  said('courier', await courier('POST', '/courier/road-closed', token, { note: 'Silk Board junction' }));
+  const cold = links.find(l => l.transferId === 'a0000000-0000-4000-8000-000000000001');
+  if (cold) await courier('POST', '/courier/location', cold.token, { lat: 12.95, long: 77.69, temperatureC: 11.4 }); // the seeded cold-chain shipment spikes
   await showAll('asha', 'lata');
 
   beat('6. Arrival: scan, checks, coverage turns green, loan shown to both');
   let arr; // the simulator may move the courier between our fix and the read, so re-send the fix a few times
-  for (let i = 0; i < 5 && !arr; i++) { await device({ transfer: jid.transferId, ...at(0.98), temperatureC: 24.9 }); arr = task(await home('asha'), 'arrival'); }
+  for (let i = 0; i < 5 && !arr; i++) { await device({ ...at(0.98), temperatureC: 24.9 }); arr = task(await home('asha'), 'arrival'); }
   must(arr, `asha: ${arr?.title} · ${arr?.subtitle}`);
   said('asha', await tap('asha', arr.primaryAction, { batchNo: batches, sealIntact: false }));
   const ok = await tap('asha', arr.primaryAction, { batchNo: batches, sealIntact: true });

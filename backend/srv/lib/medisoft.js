@@ -1,6 +1,7 @@
 'use strict';
 // OAuth 2.0 authorization-code client for the (mock) MediSoft HIS + read-only stock/schedule puller.
 const cds = require('@sap/cds');
+const crypto = require('crypto');
 const config = require('./config');
 const http = require('./http');
 const tokens = require('./tokens');
@@ -9,9 +10,15 @@ const { ingestSnapshot } = require('./ingest');
 const PROVIDER = 'MEDISOFT';
 const basic = () => 'Basic ' + Buffer.from(`${config.medisoft.clientId}:${config.medisoft.clientSecret}`).toString('base64');
 
-function authorizeUrl(state) {
+/** PKCE (RFC 7636, S256): a fresh verifier per sign-in, kept server-side with the state; only its hash goes in the URL. */
+function pkce() {
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  return { verifier, challenge: crypto.createHash('sha256').update(verifier).digest('base64url') };
+}
+
+function authorizeUrl(state, codeChallenge) {
   const m = config.medisoft;
-  const q = http.form({ response_type: 'code', client_id: m.clientId, redirect_uri: m.redirectUri, scope: m.scopes, state });
+  const q = http.form({ response_type: 'code', client_id: m.clientId, redirect_uri: m.redirectUri, scope: m.scopes, state, code_challenge: codeChallenge, code_challenge_method: 'S256' });
   return `${m.baseUrl}/oauth/authorize?${q}`;
 }
 
@@ -26,7 +33,7 @@ async function tokenRequest(params) {
   const t = res.json;
   return { access_token: t.access_token, refresh_token: t.refresh_token, scope: t.scope, expires_at: Date.now() + (t.expires_in || 3600) * 1000, tenant: t.tenant };
 }
-const exchangeCode = code => tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: config.medisoft.redirectUri });
+const exchangeCode = (code, codeVerifier) => tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: config.medisoft.redirectUri, code_verifier: codeVerifier });
 const refresh = rt => tokenRequest({ grant_type: 'refresh_token', refresh_token: rt }).then(t => ({ ...t, refresh_token: t.refresh_token || rt })); // keep it if not rotated
 
 async function revoke(token) {
@@ -63,4 +70,4 @@ async function pull(hospitalId) {
   return { ...r, mode: 'live' };
 }
 
-module.exports = { PROVIDER, authorizeUrl, exchangeCode, refresh, revoke, pull };
+module.exports = { PROVIDER, pkce, authorizeUrl, exchangeCode, refresh, revoke, pull };

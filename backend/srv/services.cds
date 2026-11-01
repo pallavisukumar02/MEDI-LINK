@@ -177,9 +177,10 @@ service CoverService {
     { grant: 'READ', to: ['pharmacist', 'approver'], where: 'hospital_ID = $user.hospital' },
     { grant: 'READ', to: 'admin' } ]
   entity Bookings as projection on db.Bookings;
-  @restrict: [
-    { grant: ['READ', 'UPDATE'], to: ['pharmacist', 'approver'], where: 'hospital_ID = $user.hospital' },
-    { grant: ['READ', 'UPDATE'], to: 'admin' } ]
+  // read-only: alerts are acknowledged with POST /me/actions/ack-alert (a PATCH could move or rewrite a row)
+  @readonly @restrict: [
+    { grant: 'READ', to: ['pharmacist', 'approver'], where: 'hospital_ID = $user.hospital' },
+    { grant: 'READ', to: 'admin' } ]
   entity Notifications as projection on db.Notifications;
 
   /** Cover board for the user's hospital, red first. window = 7 | 14 | 21 */
@@ -232,8 +233,14 @@ service RequestService {
     { grant: 'READ', to: 'pharmacist', where: 'hospital_ID = $user.hospital' },
     { grant: 'READ', to: 'admin' } ]
   entity Requests as projection on db.Requests;
-  @readonly entity Plans as projection on db.Plans;
-  @readonly entity Exclusions as projection on db.Exclusions;
+  @readonly @restrict: [
+    { grant: 'READ', to: 'pharmacist', where: 'request.hospital_ID = $user.hospital' },
+    { grant: 'READ', to: 'admin' } ]
+  entity Plans as projection on db.Plans;
+  @readonly @restrict: [
+    { grant: 'READ', to: 'pharmacist', where: 'request.hospital_ID = $user.hospital' },
+    { grant: 'READ', to: 'admin' } ]
+  entity Exclusions as projection on db.Exclusions;
 
   function prefill(drug : String, window : Integer) returns RequestPrefill;
   /** One-tap request: any omitted field is prefilled from the shortfall card. Ranks immediately. */
@@ -254,10 +261,14 @@ service SupplierService {
     { grant: 'READ', to: 'pharmacist', where: 'supplier_ID = $user.hospital or receiver_ID = $user.hospital' },
     { grant: 'READ', to: 'admin' } ]
   entity Transfers as projection on db.Transfers;
-  @readonly entity TransferLots as projection on db.TransferLots;
+  @readonly @restrict: [
+    { grant: 'READ', to: 'pharmacist', where: 'transfer.supplier_ID = $user.hospital or transfer.receiver_ID = $user.hospital' },
+    { grant: 'READ', to: 'admin' } ]
+  entity TransferLots as projection on db.TransferLots;
 
   function review(transfer : UUID) returns SupplierReview;
-  action accept(transfer : UUID, qty : Integer, repaymentMode : String) returns TransferOut;
+  /** repaysLoan: this delivery repays an open loan the supplier owes the receiver (no new loan is recorded) */
+  action accept(transfer : UUID, qty : Integer, repaymentMode : String, repaysLoan : UUID) returns TransferOut;
   action decline(transfer : UUID, reason : String, reasonCode : String) returns TransferOut;
 }
 
@@ -270,8 +281,12 @@ service ApprovalService {
   @readonly @restrict: [
     { grant: 'READ', to: 'approver', where: 'supplier_ID = $user.hospital' },
     { grant: 'READ', to: 'admin' } ]
+  @cds.redirection.target: false // Approvals.transfer must reach every transfer, not only the pending ones in the inbox
   entity Inbox as projection on db.Transfers where status = 'PENDING_APPROVAL' or status = 'PENDING_SECOND_APPROVAL';
-  @readonly entity Approvals as projection on db.Approvals;
+  @readonly @restrict: [
+    { grant: 'READ', to: 'approver', where: 'transfer.supplier_ID = $user.hospital' },
+    { grant: 'READ', to: 'admin' } ]
+  entity Approvals as projection on db.Approvals;
 
   action approveTransfer(transfer : UUID) returns TransferOut;
   action rejectTransfer(transfer : UUID, reason : String) returns TransferOut;
@@ -291,15 +306,12 @@ service WorkflowService {
 }
 
 // =====================================================================
-// Delivery partner app (FR-21..24)
+// Delivery operations for MediLink admins (FR-21..24). Couriers have no account: they use /courier/* with their link.
 // =====================================================================
 @path: 'delivery'
-@requires: ['partner', 'admin']
+@requires: ['admin']
 service DeliveryService {
-  @readonly @restrict: [
-    { grant: 'READ', to: 'partner', where: 'partner_ID = $user.partner' },
-    { grant: 'READ', to: 'admin' } ]
-  entity Shipments as projection on db.Transfers where status = 'ASSIGNED' or status = 'IN_TRANSIT';
+  @readonly entity Shipments as projection on db.Transfers where status = 'ASSIGNED' or status = 'IN_TRANSIT';
 
   action pickupScan(transfer : UUID, batchNo : String, sealId : String, loggerId : String) returns TransferOut;
   action telemetry(transfer : UUID, loggerId : String, lat : Double, long : Double, temperatureC : Double, sealStatus : String, ts : Timestamp) returns { accepted : Boolean; excursion : Boolean; transferId : UUID; };
@@ -310,9 +322,8 @@ service DeliveryService {
 // Route control: manual "road flooded" toggle + weather check (FR-23)
 // =====================================================================
 @path: 'routes'
-@requires: ['admin', 'partner', 'pharmacist']
+@requires: ['admin', 'pharmacist']
 service RouteService {
-  @readonly entity RoadClosures as projection on db.RoadClosures;
   action setRouteClosed(transfer : UUID, closed : Boolean, note : String) returns { transferId : UUID; closed : Boolean; distanceKm : Decimal(8, 2); etaMin : Integer; note : String; open : Boolean; };
   action checkWeather() returns array of { transferId : UUID; maxPrecipMm : Decimal(6, 2); closed : Boolean; note : String; };
 }
@@ -327,7 +338,7 @@ service ReceiptService {
     { grant: 'READ', to: 'pharmacist', where: 'receiver_ID = $user.hospital' },
     { grant: 'READ', to: 'admin' } ]
   entity Incoming as projection on db.Transfers where status = 'IN_TRANSIT' or status = 'DELIVERED' or status = 'QUARANTINED';
-  @readonly entity ConditionLogs as projection on db.ConditionLogs;
+  // live position + temperature: GET /me/journeys/{id}/tracking (receiver only; no city-wide ConditionLogs projection, audit F2)
 
   action arrivalScan(transfer : UUID, batchNo : String, sealIntact : Boolean, qtyReceived : Integer, decision : String) returns {
     transferId : UUID; status : String; proofOfCondition : String; checks : LargeString; lotIds : LargeString; coverStatus : String; message : String;
@@ -355,7 +366,8 @@ service LedgerService {
 @path: '/audit'
 @requires: ['admin', 'approver']
 service AuditService {
-  @readonly entity Entries as projection on db.AuditLog;
+  @restrict: [{ grant: '*', to: 'admin' }] // payloads name other hospitals; approvers keep verify() only (writes still get 405)
+  entity Entries as projection on db.AuditLog;
   function verify() returns VerifyResult;
 }
 
@@ -387,9 +399,9 @@ service AdminService {
   action runJobs() returns LargeString;
 }
 
-/** Hospital admins may change their own safety margin (Settings screen). */
+/** The approver (chief pharmacist) changes their own hospital's safety margin (Settings screen); reorder levels: POST /me/actions/set-reorder-level. */
 @path: 'settings'
-@requires: ['pharmacist', 'admin']
+@requires: ['approver', 'admin']
 service SettingsService {
   action setSafetyMargin(pct : Integer) returns { hospitalId : String; safetyMarginPct : Integer; };
 }
@@ -401,14 +413,15 @@ service SettingsService {
 @path: 'tracking'
 @requires: 'authenticated-user'
 service TrackingService {
-  event telemetry { transferId : UUID; lat : Decimal(9, 6); long : Decimal(9, 6); temperatureC : Decimal(5, 2); sealStatus : String; excursion : Boolean; loggedAt : Timestamp; }
+  /** Live position / temperature / ETA after each fix: receiving hospital + admins; the supplier gets transferId, requestId, status. */
+  event tracking { transferId : UUID; requestId : UUID; status : String; position : Map; temperature : Map; eta : Timestamp; etaText : String; remainingKm : Decimal(8, 2); }
   event excursion { transferId : UUID; temperatureC : Decimal(5, 2); range : String; message : String; quarantineSuggested : Boolean; hospitals : String; }
   event replan { transferId : UUID; distanceKm : Decimal(8, 2); etaMin : Integer; open : Boolean; note : String; }
   event status { transferId : UUID; status : String; message : String; }
-  event alert { hospitalId : String; kind : String; severity : String; message : String; ref : String; }
+  event alert { hospitalId : String; kind : String; severity : String; message : String; ref : String; notificationId : UUID; }
   /** Same journey shape as GET /me/home -> journeys[], built for the receiving socket's point of view. */
   event journey.updated { journeyId : String; perspective : String; journey : Map; }
-  /** On connect each socket joins its own contexts (hospital / partner / role); clients cannot join others. */
+  /** On connect each socket joins its own contexts (hospital / role); clients cannot join others. */
   action wsConnect();
   action wsContext(context : String, contexts : array of String, exit : Boolean, reset : Boolean);
 }

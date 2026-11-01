@@ -1,4 +1,4 @@
-ID;name;licenceNo;coldChainCertified;storageClasses;active;lat;long
-P1;CoolRoute Logistics (synthetic);KA-BLR-CC-2001;true;"AMBIENT,COLD";true;12.9716;77.5946
-P2;QuickMeds Couriers (synthetic);KA-BLR-CC-2002;false;AMBIENT;true;12.958;77.64
-P3;"FrostLine Express (synthetic, licence expired)";KA-BLR-CC-2003;true;"AMBIENT,COLD,FROZEN";true;13.01;77.55
+ID;name;licenceNo;coldChainCertified;storageClasses;active;lat;long;dispatchEmail
+P1;CoolRoute Logistics (synthetic);KA-BLR-CC-2001;true;"AMBIENT,COLD";true;12.9716;77.5946;dispatch@coolroute.example
+P2;QuickMeds Couriers (synthetic);KA-BLR-CC-2002;false;AMBIENT;true;12.958;77.64;dispatch@quickmeds.example
+P3;"FrostLine Express (synthetic, licence expired)";KA-BLR-CC-2003;true;"AMBIENT,COLD,FROZEN";true;13.01;77.55;dispatch@frostline.example

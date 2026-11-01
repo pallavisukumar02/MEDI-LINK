@@ -29,7 +29,10 @@ def _expiry_penalty(c, w):
     return w["nonNearExpiryPerUnit"] + w["perMonthToExpiry"] * min(int(c.get("daysToExpiry", 365)), 365) // 30
 
 
-def rank(qty, candidates, hospital_caps=None, max_plans=3, weights=None, time_limit_s=2.0):
+TIME_LIMIT_S = 2.0  # per CP-SAT solve; app.MAX_PLANS solves at most per request
+
+
+def rank(qty, candidates, hospital_caps=None, max_plans=3, weights=None, time_limit_s=TIME_LIMIT_S):
     w = {**DEFAULT_WEIGHTS, **(weights or {})}
     hospital_caps = hospital_caps or {}
     cands = [c for c in candidates if int(c.get("maxQty", 0)) > 0]

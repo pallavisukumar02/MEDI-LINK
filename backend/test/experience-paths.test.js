@@ -81,17 +81,19 @@ describe('side paths keep the same journey, with a clear message', () => {
     await act('ravi', task(await home('ravi'), 'accept_request').primaryAction, { repaymentMode: 'IN_KIND' });
     await act('meera', task(await home('meera'), 'approve').primaryAction);
     await act('kiran', task(await home('kiran'), 'approve').primaryAction);
-    expect(task(await home('partner'), 'pickup')).toBeDefined();
+    const assigned = jOf(await home('asha'), s.req2);
+    expect(assigned.key).toBe('waiting_pickup');
+    const link = (await T.axios.get('/admin/courier-links', as('admin'))).data.links.find(l => l.transferId === assigned.transferId);
+    expect(link).toBeDefined(); // minted when the courier was assigned
 
     const rc = await T.axios.post('/odata/v4/trust/recall', { batchNo: 'SOL24B077', reason: 'RECALL', source: 'Synthetic recall for the test' }, as('admin'));
     expect(rc.data.transfersCancelled).toBe(1);
+    const job = await T.axios.get('/courier/job', { headers: { Authorization: 'Courier ' + link.token } });
+    expect([job.status, job.data.code]).toEqual([401, 'COURIER_LINK_INVALID']); // the recall revoked the courier link
     const h = await home('asha');
     expect(jOf(h, s.req2)).toMatchObject({ key: 'recalled', colour: 'red', headline: 'This batch was recalled. Transfer cancelled' });
     expect(jOf(h, s.req2).timeline.at(-1).text).toBe('This batch was recalled. Transfer cancelled');
     expect(task(h, 'find_again')).toBeDefined();
-    const p = await home('partner');
-    expect(task(p, 'pickup')).toBeUndefined();
-    expect(jOf(p, s.req2).headline).toBe('This batch was recalled. Do not pick it up');
     const ravi = await home('ravi');
     expect(ravi.alerts.find(a => a.kind === 'RECALL').message).toBe('Batch SOL24B077 of Carboplatin 450 mg is on a recall alert. Keep it aside; MediLink will never offer it.');
   });
@@ -142,9 +144,7 @@ describe('dispatcher', () => {
   test('every role gets a home screen with friendly empty states', async () => {
     const admin = await home('admin');
     expect(admin).toMatchObject({ greeting: 'MediLink across the city', hospital: null });
-    const p2 = await home('courier2');
-    expect(p2.partner.name).toBe('QuickMeds Couriers (synthetic)');
-    expect(p2.empty).toMatchObject({ tasks: 'Nothing needs you right now.', journeys: 'No pickups assigned to you right now.' });
+    expect(admin.empty.tasks).toBe('Nothing needs you right now.');
     const deepa = await home('deepa');
     expect(deepa.greeting).toBe('Sign-offs for your hospital');
     expect(deepa.onboarding).toBeNull(); // onboarding is for pharmacists

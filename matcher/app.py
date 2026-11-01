@@ -12,6 +12,7 @@ import routing
 import solver
 
 app = FastAPI(title="MediLink matcher", version="1.0.0")
+MAX_PLANS = 5  # each plan is one CP-SAT solve of at most solver.TIME_LIMIT_S seconds: caps one request's CPU time
 
 
 class Candidate(BaseModel):
@@ -42,9 +43,9 @@ class RankRequest(BaseModel):
     neededBy: Optional[str] = None
     receiver: Optional[Point] = None
     drug: Optional[dict] = None
-    candidates: List[Candidate]
+    candidates: List[Candidate] = Field(max_length=5000)
     hospitalCaps: Dict[str, int] = {}
-    maxPlans: int = 3
+    maxPlans: int = Field(default=3, ge=1)
     nearExpiryDays: int = 60
     weights: Optional[Dict[str, int]] = None
 
@@ -55,8 +56,10 @@ def health():
 
 
 def _check_token(token: Optional[str]):
-    """If MATCHER_TOKEN is set (deployed), CAP must send it in X-Matcher-Token. Unset = open (local dev)."""
+    """If MATCHER_TOKEN is set, CAP must send it in X-Matcher-Token. Unset = open, allowed outside production only."""
     expected = os.environ.get("MATCHER_TOKEN", "")
+    if not expected and os.environ.get("NODE_ENV") == "production":
+        raise HTTPException(status_code=503, detail="MATCHER_TOKEN_REQUIRED")  # fail closed; CAP falls back to its greedy ranking
     if expected and not hmac.compare_digest(expected, token or ""):
         raise HTTPException(status_code=401, detail="MATCHER_TOKEN_INVALID")
 
@@ -73,7 +76,7 @@ def rank(body: RankRequest, x_matcher_token: Optional[str] = Header(default=None
             c["distanceKm"], c["etaMin"] = route_cache[key]["distanceKm"], route_cache[key]["etaMin"]
         if c["distanceKm"] is None:
             c["distanceKm"] = 0.0
-    plans = solver.rank(body.qty, cands, body.hospitalCaps, body.maxPlans, body.weights)
+    plans = solver.rank(body.qty, cands, body.hospitalCaps, min(body.maxPlans, MAX_PLANS), body.weights)
     best = plans[0] if plans else None
     for p in plans:
         p["reason"] = explain.template(p, body.qty, best)
@@ -84,7 +87,7 @@ def rank(body: RankRequest, x_matcher_token: Optional[str] = Header(default=None
     return {"engine": "ortools-cp-sat", "requestId": body.requestId, "plans": plans}
 
 
-if __name__ == "__main__":  # python app.py: any Python host; listens on $PORT (default 5001)
+if __name__ == "__main__":  # python app.py: listens on $MATCHER_HOST:$PORT (default 127.0.0.1:5001, i.e. only CAP on this machine)
     import uvicorn
 
-    uvicorn.run(app, host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "5001")), log_level="warning")
+    uvicorn.run(app, host=os.environ.get("MATCHER_HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "5001")), log_level="warning")

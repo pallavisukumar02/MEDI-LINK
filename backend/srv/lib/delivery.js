@@ -1,5 +1,5 @@
 'use strict';
-// Partner assignment, pickup custody, telemetry + excursions, route closure re-plan (FR-21..24).
+// Partner assignment (+ courier link), pickup custody, telemetry + excursions, route closure re-plan (FR-21..24).
 const cds = require('@sap/cds');
 const config = require('./config');
 const http = require('./http');
@@ -40,6 +40,7 @@ async function assignPartner(id, actor = 'system') {
   const p = partners[0];
   await UPDATE(T).set({ partner_ID: p.ID, status: 'ASSIGNED' }).where({ ID: id });
   await audit.log(actor, 'PARTNER_ASSIGNED', { transfer: id, partner: p.ID, storageClasses: classes, licence: lic[p.ID]?.licenceNo });
+  await require('./courier').issue(id, actor); // the partner has no account: it acts through this delivery's link
   ws.emit('status', { transferId: id, status: 'ASSIGNED', message: `Partner ${p.name} assigned` });
   return p;
 }
@@ -61,14 +62,14 @@ async function pickupScan(id, { batchNo, sealId, loggerId }, actor, partnerId) {
     await UPDATE('medilink.Lots').set({ quantity: Number(lot.quantity) - Number(l.qty) }).where({ ID: l.lot_ID });
   }
   const now = new Date();
-  await UPDATE(T).set({ status: 'IN_TRANSIT', sealId, loggerId, pickedUpAt: now.toISOString(), eta: new Date(now.getTime() + Number(t.etaMin || 0) * 60000).toISOString() }).where({ ID: id });
+  if (!await UPDATE(T).set({ status: 'IN_TRANSIT', sealId, loggerId, pickedUpAt: now.toISOString(), eta: new Date(now.getTime() + Number(t.etaMin || 0) * 60000).toISOString() }).where({ ID: id, status: 'ASSIGNED' })) throw err(409, 'INVALID_STATUS', 'Transfer is no longer ASSIGNED'); // a double scan picks up once
   await audit.log(actor, 'PICKUP', { transfer: id, batches: tl.map(l => l.batchNo), sealId, loggerId, partner: t.partner_ID });
   ws.emit('status', { transferId: id, status: 'IN_TRANSIT', message: 'Picked up; tracking live' });
   return SELECT.one.from(T).where({ ID: id });
 }
 
-/** FR-23/24: GPS + temperature from the partner logger. */
-async function telemetry({ transfer, loggerId, lat, long, temperatureC, sealStatus, ts }, actor, partnerId = null) {
+/** FR-23/24: GPS + temperature from the logger, or a GPS-only fix from the rider's phone (no temperatureC). */
+async function telemetry({ transfer, loggerId, lat, long, temperatureC, sealStatus, ts, accuracyM }, actor, partnerId = null) {
   sealStatus = sealStatus || 'INTACT';
   const t = transfer ? await SELECT.one.from(T).where({ ID: transfer }) : await SELECT.one.from(T).where({ loggerId, status: 'IN_TRANSIT' });
   if (!t) throw err(404, 'SHIPMENT_NOT_FOUND', 'No in-transit shipment for this transfer / logger');
@@ -76,14 +77,18 @@ async function telemetry({ transfer, loggerId, lat, long, temperatureC, sealStat
   if (t.status !== 'IN_TRANSIT') throw err(409, 'INVALID_STATUS', `Transfer is ${t.status}`);
   const drug = await SELECT.one.from('medilink.Drugs').where({ ID: t.drug_ID });
   const [min, max] = rangeFor(drug.storageClass);
-  const temp = Math.round(Number(temperatureC) * 100) / 100;
+  const withTemp = temperatureC !== undefined && temperatureC !== null && temperatureC !== '';
+  const temp = withTemp ? Math.round(Number(temperatureC) * 100) / 100 : null;
   lat = Math.round(Number(lat) * 1e6) / 1e6; long = Math.round(Number(long) * 1e6) / 1e6;
-  if (!isFinite(temp) || !isFinite(lat) || !isFinite(long)) throw err(400, 'INVALID_TELEMETRY', 'lat, long and temperatureC must be numbers');
+  const sent = ts ? new Date(ts).getTime() : Date.now();
+  if ((withTemp && !isFinite(temp)) || !isFinite(lat) || !isFinite(long) || Math.abs(lat) > 90 || Math.abs(long) > 180 || !isFinite(sent)) throw err(400, 'INVALID_TELEMETRY', 'lat, long (and temperatureC, ts) must be valid');
   const sealBroken = String(sealStatus).toUpperCase() === 'BROKEN';
-  const excursion = temp < min || temp > max || sealBroken;
-  const loggedAt = ts ? new Date(ts).toISOString() : new Date().toISOString();
-  await INSERT.into('medilink.ConditionLogs').entries({ ID: cds.utils.uuid(), transfer_ID: t.ID, loggedAt, lat, long, temperatureC: temp, sealStatus: sealBroken ? 'BROKEN' : 'INTACT', excursion });
-  ws.emit('telemetry', { transferId: t.ID, lat, long, temperatureC: temp, sealStatus: sealBroken ? 'BROKEN' : 'INTACT', excursion, loggedAt });
+  const excursion = (withTemp && (temp < min || temp > max)) || sealBroken;
+  // F16: a device clock may only place a reading between pickup and one minute from now (no backfilled trace)
+  const loggedAt = new Date(Math.min(Math.max(sent, new Date(t.pickedUpAt || 0).getTime()), Date.now() + 60000)).toISOString();
+  const acc = accuracyM === undefined || accuracyM === null || !isFinite(Number(accuracyM)) ? null : Math.round(Number(accuracyM) * 10) / 10;
+  const prev = await SELECT.one.from('medilink.ConditionLogs').columns('lat', 'long').where({ transfer_ID: t.ID }).orderBy('loggedAt desc');
+  await INSERT.into('medilink.ConditionLogs').entries({ ID: cds.utils.uuid(), transfer_ID: t.ID, loggedAt, lat, long, temperatureC: temp, sealStatus: sealBroken ? 'BROKEN' : 'INTACT', excursion, accuracyM: acc });
   if (excursion && !t.excursion) {
     await UPDATE(T).set({ excursion: true, quarantineSuggested: true }).where({ ID: t.ID });
     const msg = sealBroken ? `Seal reported BROKEN on shipment ${t.ID.slice(0, 8)}; quarantine on arrival suggested`
@@ -92,6 +97,7 @@ async function telemetry({ transfer, loggerId, lat, long, temperatureC, sealStat
     await audit.log(actor, 'EXCURSION', { transfer: t.ID, temperatureC: temp, range: `${min}-${max}`, sealStatus, loggedAt });
     ws.emit('excursion', { transferId: t.ID, temperatureC: temp, range: `${min}-${max}`, message: msg, quarantineSuggested: true, hospitals: `${t.supplier_ID},${t.receiver_ID}` });
   }
+  require('./tracking').afterFix(t, { lat, long, loggedAt, accuracyM: acc, temperatureC: temp }, prev, [min, max]);
   return { accepted: true, excursion, transferId: t.ID };
 }
 
@@ -115,7 +121,8 @@ async function replan(id, actor = 'system') {
     if (arrival > new Date(String(request.neededBy).slice(0, 10) + 'T23:59:59Z')) note += '; new ETA misses the needed-by date';
   }
   const set = { routeClosed: closures.length > 0, routeNote: note };
-  if (r.open) Object.assign(set, { distanceKm: r.distanceKm, etaMin: r.etaMin, eta: new Date(Date.now() + r.etaMin * 60000).toISOString() });
+  const driveMin = t.status === 'IN_TRANSIT' ? Math.max(0, r.etaMin - config.handlingMin) : r.etaMin; // already picked up: no hand-over time left
+  if (r.open) Object.assign(set, { distanceKm: r.distanceKm, etaMin: r.etaMin, eta: new Date(Date.now() + driveMin * 60000).toISOString(), routeJson: r.points ? JSON.stringify({ points: r.points, steps: r.steps }) : null });
   await UPDATE(T).set(set).where({ ID: id });
   await audit.log(actor, 'ROUTE_REPLANNED', { transfer: id, open: r.open, distanceKm: r.distanceKm, etaMin: r.etaMin, provider: r.provider, note });
   ws.emit('replan', { transferId: id, distanceKm: r.distanceKm, etaMin: r.etaMin, open: r.open, note });
@@ -176,10 +183,8 @@ async function checkWeather(actor = 'system:weather') {
   return out;
 }
 
-async function activeShipments(partnerId) {
-  const where = { status: 'IN_TRANSIT' };
-  if (partnerId) where.partner_ID = partnerId;
-  const ts = await SELECT.from(T).where(where);
+async function activeShipments() {
+  const ts = await SELECT.from(T).where({ status: 'IN_TRANSIT' });
   const out = [];
   for (const t of ts) {
     const [s, r, d] = await Promise.all([

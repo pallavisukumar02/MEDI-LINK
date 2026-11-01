@@ -1,10 +1,13 @@
 'use strict';
 /*
- * Plain REST endpoints behind CAP's own auth middleware (mocked users in development, XSUAA in production):
+ * Plain REST endpoints behind CAP's auth middleware (MediLink accounts, srv/auth.js):
  *   GET  /me/home · /me/onboarding · /me/journeys/:id · /me/city      experience layer (docs/EXPERIENCE_API.md)
+ *   GET  /me/stock[?hospital=] · /me/notifications[?status=open|all]   stock + expiry monitoring, alert inbox (lib/monitor.js)
+ *   GET  /me/journeys/:id/tracking                                     live delivery tracking (lib/tracking.js)
  *   POST /me/actions/:actionId                                         self-describing actions, Idempotency-Key aware
- *   GET  /health/integrations                                          admin: which SAP services are live / fallback
+ *   GET  /health/integrations                                          admin: which integrations are on / off / misconfigured
  *   GET  /admin/metrics                                                admin: PRD success metrics
+ *   GET  /admin/courier-links                                          admin: working courier links (simulator, support)
  * Every error is { code, title, message, fix, retryable } from the message catalogue.
  */
 const cds = require('@sap/cds');
@@ -14,6 +17,7 @@ const journey = require('./journey');
 const home = require('./home');
 const { REGISTRY, validate } = require('./actions');
 const messages = require('./messages');
+const ratelimit = require('./ratelimit');
 const LOG = cds.log('experience');
 
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
@@ -43,7 +47,7 @@ const adminOnly = fn => async (req, res) => {
 };
 
 // ---------------------------------------------------------------- idempotency
-// shortcut: keys are kept forever; add a cleanup job (delete rows older than a day) once traffic is real.
+// Rows older than a day are deleted by the daily cleanup job (lib/jobs.js).
 async function claimKey(keyHash, actionId) {
   try {
     await cds.tx(() => INSERT.into('medilink.IdempotencyKeys').entries({ keyHash, actionId, createdAt: new Date().toISOString() }));
@@ -68,7 +72,8 @@ async function dispatch(req, res) {
   try { input = validate(def.input, req.body || {}); } catch (e) { return fail(res, e); }
 
   const key = String(req.get('Idempotency-Key') || '').trim();
-  const keyHash = key && sha(`${user.id}:${id}:${key}`);
+  const keyHash = key && !def.secret && sha(`${user.id}:${id}:${key}`);
+  if (def.secret) res.set('Cache-Control', 'no-store');
   if (keyHash) {
     const seen = await claimKey(keyHash, id).catch(e => { fail(res, e); return false; });
     if (seen === false) return;
@@ -89,6 +94,7 @@ async function dispatch(req, res) {
     if (out.result) body.result = out.result;
   } catch (e) {
     ({ status, body } = messages.fromError(e, e.params));
+    if (e.retryAfter) res.set('Retry-After', String(e.retryAfter));
     if (status >= 500) LOG.error(`${id} failed (${body.code}):`, e.message);
   }
   if (keyHash) await (status < 500 ? storeKey(keyHash, status, body) : dropKey(keyHash)).catch(e => LOG.warn('idempotency store failed:', e.message));
@@ -101,17 +107,26 @@ function mount(app) {
   me.get('/home', view(v => home.home(v)));
   me.get('/onboarding', view(async v => (await home.onboarding(v)) || { done: true, steps: [], message: messages.t('onboarding.done') }));
   me.get('/city', view(() => home.city()));
+  me.get('/stock', view((v, req) => require('./monitor').stockView(v, req.query.hospital)));
+  me.get('/notifications', view((v, req) => require('./monitor').inbox(v, req.query.status)));
   me.get('/journeys/:id', view(async (v, req) => {
     const j = await journey.forId(req.params.id, v);
     if (!j) throw Object.assign(new Error('NOT_FOUND'), { status: 404, code: 'NOT_FOUND' });
     return j;
   }));
-  me.post('/actions/:actionId', dispatch);
+  me.get('/journeys/:id/tracking', view(async (v, req) => {
+    const out = await require('./tracking').forJourney(req.params.id, v);
+    if (!out) throw Object.assign(new Error('NOT_FOUND'), { status: 404, code: 'NOT_FOUND' }); // not a party: same as unknown
+    return out;
+  }));
+  const userOrIp = req => (cds.context?.user && !cds.context.user._is_anonymous ? 'u:' + cds.context.user.id : ratelimit.ipOf(req));
+  me.post('/actions/:actionId', ratelimit.limit('actions', 60, ratelimit.MIN, userOrIp), dispatch);
   me.use((err, req, res, _next) => fail(res, err.type === 'entity.parse.failed' ? Object.assign(err, { status: 400, code: 'INVALID_INPUT', params: { detail: 'The request body is not valid JSON.' } }) : err));
   app.use('/me', ...cds.middlewares.before, me);
 
   app.get('/health/integrations', ...cds.middlewares.before, adminOnly(() => require('./integrations').report()));
   app.get('/admin/metrics', ...cds.middlewares.before, adminOnly(() => require('./metrics').compute()));
+  app.get('/admin/courier-links', ...cds.middlewares.before, (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); }, adminOnly(() => require('./courier').activeLinks()));
 }
 
 module.exports = { mount, dispatch };

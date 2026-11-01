@@ -45,14 +45,27 @@ test('no excursion when disabled; shipments advance but stop short of arrival', 
   assert.strictEqual(last[0].progress, 0.97);
 });
 
-test('tick() reads activeShipments and posts telemetry with the partner credentials', async () => {
-  const posted = [];
+test('tick() lists the courier links as admin, picks up after a minute, posts readings through each link', async () => {
+  const seen = [];
+  const T = { moving: 'M'.repeat(43), stale: 'S'.repeat(43), fresh: 'F'.repeat(43) };
+  const picked = new Set();
+  const job = (status, extra = {}) => ({ status, storageClass: 'COLD', temperatureRange: { minC: 2, maxC: 8 }, pickup: { lat: 12.97, long: 77.75 }, drop: { lat: 12.935, long: 77.62 }, route: { points: [[12.97, 77.75], [12.95, 77.7], [12.935, 77.62]] }, etaMin: 60, pickedUpAt: null, ...extra });
   const srv = http.createServer((req, res) => {
     let b = ''; req.on('data', d => (b += d)); req.on('end', () => {
-      assert.match(req.headers.authorization, /^Basic /);
+      seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, body: b && JSON.parse(b) });
       res.setHeader('Content-Type', 'application/json');
-      if (req.method === 'GET' && req.url.startsWith('/odata/v4/delivery/activeShipments')) return res.end(JSON.stringify({ value: [cold] }));
-      if (req.method === 'POST' && req.url === '/odata/v4/delivery/telemetry') { const j = JSON.parse(b); posted.push(j); return res.end(JSON.stringify({ accepted: true, excursion: j.temperatureC > 8, transferId: j.transfer })); }
+      const token = (/^Courier (\S+)$/.exec(req.headers.authorization || '') || [])[1];
+      if (req.url === '/admin/courier-links') {
+        assert.match(req.headers.authorization, /^Basic /);
+        return res.end(JSON.stringify({ links: [
+          { transferId: 'a0000000-moving', status: 'IN_TRANSIT', token: T.moving, createdAt: new Date().toISOString(), batches: ['NB24T044'] },
+          { transferId: 'b0000000-stale', status: 'ASSIGNED', token: T.stale, createdAt: new Date(Date.now() - 120000).toISOString(), batches: ['B1', 'B2'] },
+          { transferId: 'c0000000-fresh', status: 'ASSIGNED', token: T.fresh, createdAt: new Date().toISOString(), batches: ['B3'] },
+        ] }));
+      }
+      if (req.url === '/courier/pickup' && token === T.stale) { picked.add(token); return res.end(JSON.stringify({ message: 'ok' })); }
+      if (req.url === '/courier/job' && token) return res.end(JSON.stringify(job(token === T.moving || picked.has(token) ? 'IN_TRANSIT' : 'ASSIGNED', { pickedUpAt: new Date().toISOString() })));
+      if (req.url === '/courier/location' && token) return res.end(JSON.stringify({ accepted: true, excursion: JSON.parse(b).temperatureC > 8 }));
       res.statusCode = 404; res.end('{}');
     });
   }).listen(0);
@@ -60,9 +73,24 @@ test('tick() reads activeShipments and posts telemetry with the partner credenti
     const cfg = config({ APP_BASE_URL: `http://localhost:${srv.address().port}` });
     const pl = createPlanner({ excursionAfterTicks: 0, rnd: fixed });
     const lines = [];
-    await tick(cfg, pl, l => lines.push(l));
-    assert.strictEqual(posted.length, 1);
-    assert.deepStrictEqual(Object.keys(posted[0]).sort(), ['lat', 'loggerId', 'long', 'sealStatus', 'temperatureC', 'transfer']);
-    assert.match(lines[0], /EXCURSION/);
+    const readings = await tick(cfg, pl, l => lines.push(l));
+    assert.strictEqual(readings.length, 2);
+    const pickup = seen.filter(x => x.url === '/courier/pickup');
+    assert.strictEqual(pickup.length, 1); // the fresh one is left to a person for a minute
+    assert.strictEqual(pickup[0].auth, 'Courier ' + T.stale);
+    assert.deepStrictEqual(pickup[0].body.batchNo, 'B1,B2');
+    const posts = seen.filter(x => x.url === '/courier/location');
+    assert.deepStrictEqual(posts.map(x => x.auth).sort(), ['Courier ' + T.moving, 'Courier ' + T.stale]);
+    for (const p of posts) assert.deepStrictEqual(Object.keys(p.body).sort(), ['lat', 'long', 'sealStatus', 'temperatureC']);
+    assert.ok(seen.every(x => x.url !== '/courier/job' || x.auth !== 'Courier ' + T.fresh));
+    assert.ok(lines.some(l => /EXCURSION/.test(l)));
+    assert.ok(!lines.join('\n').includes(T.moving)); // tokens are never printed
   } finally { srv.close(); }
+});
+
+test('the simulator signs in as the admin with the demo password by default', () => {
+  const basic = u => 'Basic ' + Buffer.from(u).toString('base64');
+  assert.strictEqual(config({ DEMO_PASSWORD: 'pw-1' }).auth, basic('admin:pw-1'));
+  assert.strictEqual(config({ SIM_USER: 'ops', SIM_PASSWORD: 'pw-2' }).auth, basic('ops:pw-2'));
+  assert.strictEqual(config({ SIM_BEARER_TOKEN: 'abc' }).auth, 'Bearer abc');
 });

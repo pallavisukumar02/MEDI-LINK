@@ -1,26 +1,39 @@
+# Secrets and local config (never commit)
 .env
 *.env
 !.env.example
 aicore-key.json
 .cdsrc-private.json
 default-env.json
-node_modules/
-__pycache__/
-.pytest_cache/
-*.pyc
-.venv/
-mta_archives/
-gen/
-resources/
-*.mtar
-.token-vault/
+*.pem
+*.key
 connector/.connector-token
-connector/hospital_c.db
-secrets.mtaext
-*.mtaext
-!secrets.mtaext.example
 
-# standalone SQLite database (npm run db:init)
+# Dependencies and build output
+node_modules/
+backend/gen/
+coverage/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# MediLink SQLite database (npm run db:init / npm run dev) and the connector demo DB
 backend/db/medilink.sqlite
 backend/db/medilink.sqlite-*
-backend/db/export/
+*.sqlite-journal
+connector/hospital_c.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

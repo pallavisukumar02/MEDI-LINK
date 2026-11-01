@@ -3,7 +3,7 @@
  * Trust feed (FR-15): manual flag / recall endpoint and the LLM-based CDSCO alert parser (behind a flag).
  * The LLM is replaced by an injected fake; with LLM_PROVIDER=none parsing is refused and manual entry still works.
  */
-require('./helpers/env')({ MATCHER_URL: 'http://localhost:5999', MATCHER_FALLBACK_ENABLED: 'true', MEDISOFT_BASE_URL: 'http://localhost:4199' });
+require('./helpers/env')({ MATCHER_URL: 'http://localhost:1', MATCHER_FALLBACK_ENABLED: 'true', MEDISOFT_BASE_URL: 'http://localhost:1' });
 const fs = require('fs');
 const path = require('path');
 const cds = require('@sap/cds');

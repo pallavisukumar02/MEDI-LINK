@@ -1,7 +1,7 @@
 'use strict';
 /*
  * One plain-language journey per medicine request (experience layer), seen from the viewer's side:
- * receiver (requesting hospital), supplier, partner (courier) or admin. Derived on every read from
+ * receiver (requesting hospital), supplier or admin. Couriers have no account (lib/courier.js). Derived on every read from
  * Requests / Transfers / Approvals / ConditionLogs / RoadClosures / Ledger / Plans: nothing is stored separately.
  *   stages: 1 Shortfall found · 2 Request sent · 3 Waiting for supplier · 4 Waiting for approval
  *           5 On the way · 6 Arrived · 7 Done                     colour: green | amber | red | grey
@@ -43,8 +43,8 @@ const group = (rows, k) => rows.reduce((m, r) => ((m[r[k]] ||= []).push(r), m), 
 function viewerOf(user, locale) {
   const attr = k => { const v = user?.attr?.[k]; return Array.isArray(v) ? v[0] : v; };
   const is = r => !!user?.is?.(r);
-  const role = is('admin') ? 'admin' : is('partner') ? 'partner' : is('approver') ? 'approver' : is('pharmacist') ? 'pharmacist' : 'other';
-  return { userId: user?.id, role, hospitalId: attr('hospital') || null, partnerId: attr('partner') || null, locale };
+  const role = is('admin') ? 'admin' : is('approver') ? 'approver' : is('pharmacist') ? 'pharmacist' : 'other';
+  return { userId: user?.id, role, hospitalId: attr('hospital') || null, locale };
 }
 
 // ---------- loading ----------
@@ -64,13 +64,16 @@ async function load({ requestIds = [], transferIds = [] }) {
     tIds.length ? SELECT.from('medilink.ConditionLogs').where({ ...inList('transfer_ID', tIds), excursion: true }).orderBy('loggedAt') : [],
     SELECT.from('medilink.Hospitals').columns('ID', 'name', 'lat', 'long'), SELECT.from('medilink.Drugs'), SELECT.from('medilink.DeliveryPartners').columns('ID', 'name'),
   ]);
-  // latest GPS / temperature fix per in-transit shipment
-  const lastLog = {};
-  for (const id of inTransit) lastLog[id] = await SELECT.one.from('medilink.ConditionLogs').where({ transfer_ID: id }).orderBy('loggedAt desc');
+  // latest GPS fix and latest temperature reading per in-transit shipment (phone fixes carry no temperature)
+  const lastLog = {}, lastTemp = {};
+  for (const id of inTransit) {
+    lastLog[id] = await SELECT.one.from('medilink.ConditionLogs').where({ transfer_ID: id }).orderBy('loggedAt desc');
+    lastTemp[id] = await SELECT.one.from('medilink.ConditionLogs').where({ transfer_ID: id, temperatureC: { '!=': null } }).orderBy('loggedAt desc');
+  }
   return {
     requests, transfers: ts, byRequest: group(ts, 'request_ID'), approvals: group(approvals, 'transfer_ID'), loans: group(loans, 'transfer_ID'),
     closures: group(closures, 'transfer_ID'), lots: group(transferLots, 'transfer_ID'), plans: group(plans, 'request_ID'),
-    firstExcursion: Object.fromEntries(Object.entries(group(excursions, 'transfer_ID')).map(([k, v]) => [k, v[0]])), lastLog,
+    firstExcursion: Object.fromEntries(Object.entries(group(excursions, 'transfer_ID')).map(([k, v]) => [k, v[0]])), lastLog, lastTemp,
     hospitals: Object.fromEntries(hospitals.map(h => [h.ID, h])), drugs: Object.fromEntries(drugs.map(d => [d.ID, d])),
     partners: Object.fromEntries(partners.map(p => [p.ID, p])), reviews: {}, covers: {},
   };
@@ -127,7 +130,7 @@ const recalled = x => x?.status === 'CANCELLED' && /^Lot flagged/.test(x.decline
 
 function perspective(r, legs, viewer) {
   if (viewer.role === 'admin') return 'admin';
-  if (viewer.role === 'partner') return 'partner';
+  if (!viewer.hospitalId) return null; // F11: only the two hospitals (and admins) see a journey
   if (r.hospital_ID === viewer.hospitalId) return 'receiver';
   if (legs.some(x => x.supplier_ID === viewer.hospitalId)) return 'supplier';
   return null;
@@ -136,7 +139,6 @@ function perspective(r, legs, viewer) {
 /** Pick the transfer the journey is about, for this viewer. */
 function leadOf(r, legs, persp, viewer, ctx) {
   if (persp === 'supplier') return legs.filter(x => x.supplier_ID === viewer.hospitalId).at(-1);
-  if (persp === 'partner') return legs.filter(x => x.partner_ID === viewer.partnerId).at(-1);
   const active = legs.filter(x => ACTIVE.includes(x.status));
   // multi-leg plans: the journey moves at the pace of its slowest active leg
   if (active.length) return active.map(x => ({ x, s: legStage(x, ctx).stage })).sort((a, b) => a.s - b.s || by('createdAt')(b.x, a.x))[0].x;
@@ -153,7 +155,7 @@ function previousText(legs, lead, ctx) {
 
 function stateOf(r, legs, lead, persp, ctx) {
   if (r.status === 'CANCELLED') return { stage: lead ? Math.min(legStage(lead, ctx).stage, 4) : 2, key: 'cancelled' };
-  if (persp === 'supplier' || persp === 'partner') {
+  if (persp === 'supplier') {
     if (!lead) return { stage: 2, key: 'cancelled' };
     if (ACTIVE.includes(lead.status)) return legStage(lead, ctx);
     if (recalled(lead)) return { stage: 2, key: 'recalled' };
@@ -178,7 +180,7 @@ function timeline(r, legs, persp, viewer, ctx) {
   const drug = drugName(ctx.drugs[r.drug_ID]);
   const own = viewer.hospitalId;
   add(r.createdAt, 'requested', { who: r.hospital_ID === own ? 'You' : shortName(ctx.hospitals[r.hospital_ID]), qty: r.qty, drug });
-  const visible = persp === 'supplier' ? legs.filter(x => x.supplier_ID === own) : persp === 'partner' ? legs.filter(x => x.partner_ID === viewer.partnerId) : legs;
+  const visible = persp === 'supplier' ? legs.filter(x => x.supplier_ID === own) : legs;
   for (const x of visible) {
     const other = x.supplier_ID === own ? 'you' : shortName(ctx.hospitals[x.supplier_ID]);
     const partner = ctx.partners[x.partner_ID]?.name;
@@ -223,7 +225,7 @@ function build(r, viewer, ctx) {
   const lead = leadOf(r, legs, persp, viewer, ctx);
   const st = stateOf(r, legs, lead, persp, ctx);
   const drug = ctx.drugs[r.drug_ID];
-  const log = lead && ctx.lastLog[lead.ID];
+  const log = lead && ctx.lastTemp[lead.ID];
   const loan = lead && (ctx.loans[lead.ID] || [])[0];
   const cover = ctx.covers[r.ID];
   const counterpart = persp === 'supplier' ? ctx.hospitals[r.hospital_ID] : lead ? ctx.hospitals[lead.supplier_ID] : null;
@@ -282,8 +284,7 @@ async function scope(viewer) {
   const reqs = viewer.role === 'admin' ? await SELECT.from('medilink.Requests').columns('ID', 'status', 'modifiedAt')
     : viewer.hospitalId ? await SELECT.from('medilink.Requests').columns('ID', 'status', 'modifiedAt').where({ hospital_ID: viewer.hospitalId }) : [];
   take(reqs.filter(r => LIVE_REQUEST.includes(r.status) || recent(r)).map(r => r.ID));
-  const legs = viewer.role === 'partner' && viewer.partnerId ? await SELECT.from(T).columns('ID', 'request_ID', 'status', 'modifiedAt').where({ partner_ID: viewer.partnerId })
-    : viewer.hospitalId ? await SELECT.from(T).columns('ID', 'request_ID', 'status', 'modifiedAt').where({ supplier_ID: viewer.hospitalId }) : [];
+  const legs = viewer.hospitalId ? await SELECT.from(T).columns('ID', 'request_ID', 'status', 'modifiedAt').where({ supplier_ID: viewer.hospitalId }) : [];
   take(legs.filter(x => OPEN_LEG.includes(x.status) || recent(x)).map(x => x.request_ID));
   // open loans keep a finished journey visible to both sides
   if (viewer.hospitalId) {
@@ -320,4 +321,4 @@ async function forId(id, viewer) {
   return reqId ? (await buildAll([reqId], viewer))[0] || null : null;
 }
 
-module.exports = { viewerOf, forViewer, forId, shortfallJourney, buildAll, fmtDate, fmtDateLong, fmtTime, fmtClock, shortName, drugName, ACTIVE, COLOUR };
+module.exports = { viewerOf, forViewer, forId, shortfallJourney, buildAll, fmtDate, fmtDateLong, fmtTime, fmtClock, shortName, drugName, ACTIVE, COLOUR, ARRIVED_KM };

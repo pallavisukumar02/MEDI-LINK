@@ -1,6 +1,6 @@
 'use strict';
 /*
- * Standalone replacements behind the existing adapters:
+ * Adapters that need no SAP service:
  *   notify.js  SMTP email (nodemailer, fake transport) for shortfall / excursion / recall / licence / stale feed
  *   llm.js     LLM_PROVIDER=openai-compatible against a fake OpenAI-style server; the number/batch guards still apply
  *   scripts/env-check.js  plain-language report of missing variables, never a value
@@ -41,7 +41,8 @@ describe('SMTP alerts', () => {
         'MediLink: Medicine shortfall (H1)', 'MediLink: Temperature out of range (H1)', 'MediLink: Batch recall (H1)',
         'MediLink: Licence expiring (H1)', 'MediLink: Stock feed not updating (H1)',
       ]);
-      expect(sent[0]).toMatchObject({ from: 'medilink@example.test', to: 'pharmacy@example.test', text: expect.stringMatching(/^Synthetic SHORTFALL message[\s\S]*synthetic data/) });
+      // H1's staff have no email yet, so its alerts go to the hospital's admin email (routing: test/monitor.test.js)
+      expect(sent[0]).toMatchObject({ from: 'medilink@example.test', to: 'admin.h1@example.org', text: expect.stringMatching(/^Synthetic SHORTFALL message[\s\S]*synthetic data/) });
       const rows = await cds.tx(() => SELECT.from('medilink.Notifications').where({ message: { like: 'Synthetic %' } }));
       expect(rows.length).toBe(7); // every alert is still in the app
       const h = (await T.axios.get('/health/integrations', { auth: { username: 'admin', password: 'demo' } })).data;
@@ -51,7 +52,7 @@ describe('SMTP alerts', () => {
 
   test('no recipient = no email, no crash; SMTP off = console; a failing server does not break the alert', async () => {
     await withEnv({ ...SMTP, ALERT_EMAIL_TO: '' }, async () => {
-      await cds.tx(() => notify.notify({ hospital: 'H1', kind: 'SHORTFALL', message: 'Synthetic no-recipient' }));
+      await cds.tx(() => notify.notify({ hospital: null, kind: 'SHORTFALL', message: 'Synthetic no-recipient' }));
       await tick();
       expect(sent).toEqual([]);
     });
@@ -128,17 +129,19 @@ describe('OpenAI-compatible LLM', () => {
 
 describe('npm run env:check', () => {
   const { report } = require(path.join(__dirname, '..', '..', 'scripts', 'env-check.js'));
-  test('lists what standalone needs, in words, without values', () => {
-    const r = report('standalone-pg', { AUTH_JWT_SECRET: 'short', MEDISOFT_OAUTH_CLIENT_SECRET: 'change-me-random-32-chars', LLM_PROVIDER: 'aicore', SMTP_HOST: 'mail.example.test' });
+  test('lists what is missing, in words, without values', () => {
+    const r = report({ AUTH_JWT_SECRET: 'short', MEDISOFT_OAUTH_CLIENT_SECRET: 'change-me-random-32-chars', LLM_PROVIDER: 'aicore', SMTP_HOST: 'mail.example.test', APPROVAL_MODE: 'bpa' });
     expect(r.ok).toBe(false);
-    for (const k of ['AUTH_JWT_SECRET', 'TOKEN_ENCRYPTION_KEY', 'DATABASE_URL', 'DEMO_PASSWORD', 'MEDISOFT_OAUTH_CLIENT_SECRET']) expect(r.text).toMatch(new RegExp(`- ${k}: `));
-    expect(r.text).toMatch(/LLM_PROVIDER=aicore is ignored in standalone mode/);
+    for (const k of ['AUTH_JWT_SECRET', 'TOKEN_ENCRYPTION_KEY', 'DEMO_PASSWORD', 'MEDISOFT_OAUTH_CLIENT_SECRET']) expect(r.text).toMatch(new RegExp(`- ${k}: `));
+    expect(r.text).toMatch(/LLM_PROVIDER is aicore but AICORE_MODEL_NAME is empty/);
+    expect(r.text).toMatch(/APPROVAL_MODE is bpa but BPA_API_URL is empty/);
     expect(r.text).toMatch(/SMTP_HOST is set but ALERT_EMAIL_FROM is empty/);
     expect(r.text).not.toMatch(/short|mail\.example\.test/);
-    const full = { AUTH_JWT_SECRET: 'a'.repeat(40), TOKEN_ENCRYPTION_KEY: 'b'.repeat(40), DEMO_PASSWORD: 'demo-pass-1', PATIENT_REF_HASH_SALT: 's', MEDISOFT_OAUTH_CLIENT_SECRET: 'm', CONNECTOR_PAIRING_SECRET: 'c' };
-    expect(report('standalone', full).ok).toBe(true);
-    expect(report('standalone-pg', full).ok).toBe(false);
-    expect(report('standalone-pg', { ...full, DATABASE_URL: 'postgresql://u:p@db.example.test:5432/medilink' }).ok).toBe(true);
-    expect(report('development', {}).ok).toBe(true);
+    const full = { AUTH_JWT_SECRET: 'a'.repeat(40), TOKEN_ENCRYPTION_KEY: 'b'.repeat(40), DEMO_PASSWORD: 'demo', PATIENT_REF_HASH_SALT: 's', MEDISOFT_OAUTH_CLIENT_SECRET: 'm', CONNECTOR_PAIRING_SECRET: 'c' };
+    expect(report(full)).toMatchObject({ ok: true, text: expect.stringMatching(/^Checking for development/) });
+    const prod = report({ ...full, NODE_ENV: 'production' }); // "demo" is fine on a laptop, not in production
+    expect(prod.ok).toBe(false);
+    expect(prod.text).toMatch(/- DEMO_PASSWORD: .*at least 8 characters in production/);
+    expect(report({ ...full, NODE_ENV: 'production', DEMO_PASSWORD: 'long-demo-pass' }).ok).toBe(true);
   });
 });

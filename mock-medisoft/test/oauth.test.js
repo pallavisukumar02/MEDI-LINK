@@ -10,7 +10,9 @@ test.after(() => server.close());
 
 const form = o => new URLSearchParams(o).toString();
 const H = { 'Content-Type': 'application/x-www-form-urlencoded' };
-const authQ = { response_type: 'code', client_id: 'c1', redirect_uri: 'http://cb.test/callback', scope: 'stock.read schedule.read', state: 'xyz' };
+const verifier = 'v'.repeat(43) + '-pkce-test-verifier';
+const challenge = require('node:crypto').createHash('sha256').update(verifier).digest('base64url');
+const authQ = { response_type: 'code', client_id: 'c1', redirect_uri: 'http://cb.test/callback', scope: 'stock.read schedule.read', state: 'xyz', code_challenge: challenge, code_challenge_method: 'S256' };
 
 async function getCode(user = 'pharm.jayanagar', decision = 'allow') {
   const login = await fetch(`${base}/oauth/login`, { method: 'POST', headers: H, body: form({ ...authQ, username: user, password: 'medisoft-demo' }), redirect: 'manual' });
@@ -22,9 +24,21 @@ async function getCode(user = 'pharm.jayanagar', decision = 'allow') {
   return new URL(c.headers.get('location'));
 }
 
-test('rejects unknown client and bad redirect', async () => {
+test('rejects unknown client, bad redirect and a missing or plain PKCE challenge', async () => {
   assert.strictEqual((await fetch(`${base}/oauth/authorize?${form({ ...authQ, client_id: 'evil' })}`)).status, 400);
   assert.strictEqual((await fetch(`${base}/oauth/authorize?${form({ ...authQ, redirect_uri: 'http://evil/cb' })}`)).status, 400);
+  const { code_challenge, ...noPkce } = authQ;
+  assert.strictEqual((await fetch(`${base}/oauth/authorize?${form(noPkce)}`)).status, 400);
+  assert.strictEqual((await fetch(`${base}/oauth/authorize?${form({ ...authQ, code_challenge_method: 'plain' })}`)).status, 400);
+  assert.strictEqual((await fetch(`${base}/oauth/authorize?${form(authQ)}`)).status, 200);
+});
+
+test('PKCE: a code is useless without the matching code_verifier', async () => {
+  const code = (await getCode()).searchParams.get('code');
+  const auth = 'Basic ' + Buffer.from('c1:s3cret').toString('base64');
+  const r = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { ...H, Authorization: auth }, body: form({ grant_type: 'authorization_code', code, redirect_uri: authQ.redirect_uri, code_verifier: 'w'.repeat(43) }) });
+  assert.strictEqual(r.status, 400);
+  assert.strictEqual((await r.json()).error, 'invalid_grant');
 });
 
 test('full authorization-code flow, hashed patient refs, single-use code, refresh, revoke', async () => {
@@ -32,9 +46,9 @@ test('full authorization-code flow, hashed patient refs, single-use code, refres
   assert.strictEqual(loc.searchParams.get('state'), 'xyz');
   const code = loc.searchParams.get('code');
   const auth = 'Basic ' + Buffer.from('c1:s3cret').toString('base64');
-  const tok = await (await fetch(`${base}/oauth/token`, { method: 'POST', headers: { ...H, Authorization: auth }, body: form({ grant_type: 'authorization_code', code, redirect_uri: authQ.redirect_uri }) })).json();
+  const tok = await (await fetch(`${base}/oauth/token`, { method: 'POST', headers: { ...H, Authorization: auth }, body: form({ grant_type: 'authorization_code', code, redirect_uri: authQ.redirect_uri, code_verifier: verifier }) })).json();
   assert.ok(tok.access_token); assert.strictEqual(tok.tenant, 'H1');
-  const again = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { ...H, Authorization: auth }, body: form({ grant_type: 'authorization_code', code, redirect_uri: authQ.redirect_uri }) });
+  const again = await fetch(`${base}/oauth/token`, { method: 'POST', headers: { ...H, Authorization: auth }, body: form({ grant_type: 'authorization_code', code, redirect_uri: authQ.redirect_uri, code_verifier: verifier }) });
   assert.strictEqual(again.status, 400, 'code is single-use');
   const sched = await (await fetch(`${base}/api/schedule`, { headers: { Authorization: 'Bearer ' + tok.access_token } })).json();
   assert.ok(sched.items.length > 0);

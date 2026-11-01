@@ -50,7 +50,7 @@ function detourWaypoint(a, b, c) {
 
 function etaMinutes(km) { return Math.round(config.handlingMin + (km / config.citySpeedKmh) * 60); }
 
-/** Pure fallback routing used when no ORS key (or ORS fails). straightKm: precomputed straight line (geo.js, HANA ST_Distance). */
+/** Pure fallback routing used when no ORS key (or ORS fails). straightKm: precomputed straight line (geo.js). */
 function fallbackRoute(from, to, closures = [], straightKm) {
   from = pt(from); to = pt(to);
   const active = closures.filter(c => c.active !== false).map(cl);
@@ -98,7 +98,26 @@ async function orsRoute(from, to, closures) {
   const s = res.json.routes?.[0]?.summary;
   if (!s) throw new Error('ORS: no summary');
   const km = s.distance / 1000;
-  return { open: true, detour: hits.length > 0, distanceKm: round(km), etaMin: Math.round(config.handlingMin + s.duration / 60), provider: 'ors', note: hits.length ? `Detour around ${hits.map(h => h.name).join(', ')}` : undefined };
+  const r0 = res.json.routes[0];
+  const points = typeof r0.geometry === 'string' ? decodePolyline(r0.geometry) : undefined;
+  const steps = (r0.segments || []).flatMap(g => g.steps || []).map(x => ({ instruction: x.instruction, distanceKm: round((x.distance || 0) / 1000) }));
+  return { open: true, detour: hits.length > 0, distanceKm: round(km), etaMin: Math.round(config.handlingMin + s.duration / 60), provider: 'ors', points, steps, note: hits.length ? `Detour around ${hits.map(h => h.name).join(', ')}` : undefined };
+}
+
+/** Encoded polyline (precision 5, what ORS returns by default) -> [[lat, long], ...]. */
+function decodePolyline(s) {
+  const out = [];
+  let i = 0, lat = 0, long = 0;
+  while (i < s.length) {
+    for (const k of [0, 1]) {
+      let shift = 0, r = 0, b;
+      do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << shift; shift += 5; } while (b >= 32);
+      const d = r & 1 ? ~(r >> 1) : r >> 1;
+      if (k) long += d; else lat += d;
+    }
+    out.push([lat / 1e5, long / 1e5]);
+  }
+  return out;
 }
 
 async function route(from, to, closures = [], straightKm) {
@@ -109,4 +128,4 @@ async function route(from, to, closures = [], straightKm) {
 }
 
 const round = n => Math.round(n * 100) / 100;
-module.exports = { haversineKm, route, fallbackRoute, intersects, inside, detourWaypoint, etaMinutes };
+module.exports = { haversineKm, route, fallbackRoute, intersects, inside, detourWaypoint, etaMinutes, decodePolyline };

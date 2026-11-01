@@ -16,8 +16,8 @@ const COLD = 'a0000000-0000-4000-8000-000000000001'; // seeded H2 -> H3 trastuzu
 
 describe('arrival scan and proof of condition', () => {
   test('excursion during transit: ACCEPT is refused, QUARANTINE is recorded with FAIL proof', async () => {
-    await post('/odata/v4/delivery/telemetry', { loggerId: 'LOG-7781', lat: 12.95, long: 77.69, temperatureC: 5.1 }, 'sim');
-    await post('/odata/v4/delivery/telemetry', { loggerId: 'LOG-7781', lat: 12.94, long: 77.65, temperatureC: 12.3 }, 'sim');
+    await post('/odata/v4/delivery/telemetry', { loggerId: 'LOG-7781', lat: 12.95, long: 77.69, temperatureC: 5.1 }, 'admin'); // logger feed (ops path)
+    await post('/odata/v4/delivery/telemetry', { loggerId: 'LOG-7781', lat: 12.94, long: 77.65, temperatureC: 12.3 }, 'admin');
     expect((await post('/odata/v4/receipt/arrivalScan', { transfer: COLD, batchNo: 'NB24T044', sealIntact: true, qtyReceived: 2 }, 'sunil')).status).toBe(403); // supplier, not receiver
     const acc = await post('/odata/v4/receipt/arrivalScan', { transfer: COLD, batchNo: 'NB24T044', sealIntact: true, qtyReceived: 2, decision: 'ACCEPT' }, 'lata');
     expect(acc.status).toBe(409);
