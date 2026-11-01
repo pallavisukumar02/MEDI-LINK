@@ -17,7 +17,7 @@ const win = process.platform === 'win32';
 
 function python() {
   for (const exe of [process.env.PYTHON, 'python3', 'python', 'py'].filter(Boolean)) {
-    const r = spawnSync(exe, ['-c', 'import ortools, fastapi, uvicorn'], { stdio: 'ignore', shell: win });
+    const r = spawnSync(exe, ['-c', 'import ortools, fastapi, uvicorn'], { stdio: 'ignore' });
     if (r.status === 0) return exe;
   }
   return null;
@@ -26,7 +26,7 @@ function python() {
 const COLORS = { cap: 36, matcher: 35, medisoft: 33, simulator: 32 };
 const procs = [];
 function run(name, cmd, cmdArgs, cwd, env = {}) {
-  const p = spawn(cmd, cmdArgs, { cwd, env: { ...process.env, ...env }, shell: win, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(cmd, cmdArgs, { cwd, env: { ...process.env, ...env }, shell: win && !path.isAbsolute(cmd), stdio: ['ignore', 'pipe', 'pipe'] });
   const tag = `\x1b[${COLORS[name] || 37}m[${name}]\x1b[0m `;
   const pipe = s => s.on('data', d => String(d).split(/\r?\n/).filter(Boolean).forEach(l => console.log(tag + l)));
   pipe(p.stdout); pipe(p.stderr);
@@ -47,7 +47,8 @@ async function waitFor(url, ms = 60000) {
 let stopping = false;
 function shutdown(code = 0) {
   if (stopping) return; stopping = true;
-  for (const p of procs) if (!p.killed) p.kill();
+  // Windows: python runs under cmd.exe, and p.kill() would leave it running (port 5001 stays taken)
+  for (const p of procs) if (!p.killed) { if (win) spawnSync('taskkill', ['/pid', String(p.pid), '/T', '/F'], { stdio: 'ignore' }); else p.kill(); }
   setTimeout(() => process.exit(code), 300);
 }
 process.on('SIGINT', () => shutdown(0));

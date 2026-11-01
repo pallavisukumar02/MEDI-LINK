@@ -5,6 +5,7 @@ const config = require('./config');
 const http = require('./http');
 const audit = require('./audit');
 const routing = require('./routing');
+const geo = require('./geo');
 const ws = require('./ws');
 const { notify } = require('./notify');
 const { partnerCanCarry, licenceValid } = require('./rules');
@@ -29,8 +30,9 @@ async function assignPartner(id, actor = 'system') {
   const today = new Date().toISOString().slice(0, 10);
   const lic = Object.fromEntries((await SELECT.from('medilink.Licences').where({ partyType: 'PARTNER' })).map(l => [l.partyId, l]));
   const partners = (await SELECT.from('medilink.DeliveryPartners'))
-    .filter(p => classes.every(c => partnerCanCarry(p, c)) && licenceValid(lic[p.ID]?.validTill, today))
-    .sort((a, b) => routing.haversineKm(a, supplier) - routing.haversineKm(b, supplier));
+    .filter(p => classes.every(c => partnerCanCarry(p, c)) && licenceValid(lic[p.ID]?.validTill, today));
+  const km = await geo.distancesKm(supplier, partners);
+  partners.sort((a, b) => km[a.ID] - km[b.ID]);
   if (!partners.length) {
     await notify({ hospital: t.supplier_ID, kind: 'NO_PARTNER', severity: 'HIGH', ref: id, message: `No licensed partner certified for ${classes.join('/')} is available` });
     return null;

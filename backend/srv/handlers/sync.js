@@ -7,6 +7,7 @@ const { hospitalOf } = require('../lib/users');
 const { wrap } = require('./_util');
 const coverdb = require('../lib/coverdb');
 const { resolveDrug, parseDate } = require('../lib/ingest');
+const photo = require('../lib/photo');
 
 module.exports = cds.service.impl(function () {
   this.on('uploadSheet', wrap(async req => {
@@ -20,6 +21,15 @@ module.exports = cds.service.impl(function () {
     if (!req.data.confirm) return base; // admin reviews mapping + preview first
     const ingested = await ingestSnapshot(hId, 'SHEET', { lots: a.items }, { actor: req.user.id });
     return { ...base, ingested };
+  }));
+  this.on('uploadPhoto', wrap(async req => {
+    const hId = hospitalOf(req, req.data.hospital);
+    if (req.data.confirm) {
+      const r = await photo.confirm(hId, req.data.previewId, req.user.id);
+      return { hospitalId: hId, previewId: req.data.previewId, rows: r.rows, ingested: r.ingested };
+    }
+    const p = await photo.preview(hId, req.data.imageBase64, req.data.mimeType, req.user.id);
+    return { hospitalId: hId, previewId: p.previewId, rows: p.rows.length, preview: JSON.stringify(p.rows), dropped: JSON.stringify(p.dropped) };
   }));
   this.on('syncNow', wrap(async req => {
     const hId = req.data.hospital ? hospitalOf(req, req.data.hospital) : (req.user.is('admin') ? null : hospitalOf(req));

@@ -5,6 +5,7 @@ const config = require('./config');
 const http = require('./http');
 const audit = require('./audit');
 const routing = require('./routing');
+const geo = require('./geo');
 const coverdb = require('./coverdb');
 const sync = require('./sync');
 const { maxGivable, isUsable, toDay, daysBetween } = require('./cover');
@@ -32,11 +33,12 @@ async function evaluate(request, { excludeHospitals = [], now = new Date() } = {
 
   const candidatesLots = ctx.lots.filter(l => sameGeneric.includes(l.drug_ID) && l.hospital_ID !== receiver.ID && Number(l.quantity) > 0 && !excludeHospitals.includes(l.hospital_ID));
   const routeCache = {};
+  const straight = await geo.distancesKm(receiver, [...new Set(candidatesLots.map(l => l.hospital_ID))].map(id => hospitals[id]));
   const candidates = [], exclusions = [];
   for (const lot of candidatesLots) {
     const supplier = hospitals[lot.hospital_ID];
     if (supplier.feedStale) { exclusions.push(exclusion(lot, supplier, { rule: 1, ruleName: 'GENUINE_SURPLUS', code: 'STALE_FEED', detail: 'Supplier feed is stale; stock cannot be trusted until it re-syncs' })); continue; }
-    routeCache[supplier.ID] ||= await routing.route(supplier, receiver, closures);
+    routeCache[supplier.ID] ||= await routing.route(supplier, receiver, closures, straight[supplier.ID]);
     const route = routeCache[supplier.ID];
     const own = { lots: ctx.lots.filter(l => l.hospital_ID === supplier.ID && l.drug_ID === lot.drug_ID), bookings: ctx.bookings.filter(b => b.hospital_ID === supplier.ID && b.drug_ID === lot.drug_ID) };
     const usable = isUsable(lot, today, ctx.isFlagged);

@@ -1,7 +1,6 @@
 """Connector tests: SHA-256 hashing at source, no names leave, pairing, token push, revoked token, real PostgreSQL views."""
 import hashlib
 import json
-import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -132,23 +131,29 @@ def test_main_refuses_without_salt(monkeypatch):
     assert C.main(["--once"]) == 2
 
 
-PG_URL = os.environ.get("CONNECTOR_TEST_PG_URL", "postgresql://pharmacy:pharmacy@localhost:5432/hospital_c")
-
-
-def _pg():
-    try:
-        e = create_engine(C.engine_url(PG_URL))
-        with e.connect() as c:
-            c.execute(text("SELECT 1 FROM medilink_stock_v LIMIT 1"))
-        return e
-    except Exception:
-        return None
-
-
-@pytest.mark.skipif(_pg() is None, reason="demo PostgreSQL not running (npm run connector:db)")
-def test_reads_real_postgres_views_from_seed_sql():
-    p = C.build_payload(C.read_snapshot(_pg()), SALT)
+def test_reads_seed_database_views_on_sqlite(tmp_path):
+    """The generated seed SQL, built into a SQLite file by seed_sqlite.py, read through the connector's read-only URL."""
+    import seed_sqlite
+    db = seed_sqlite.build(tmp_path / "hospital_c.db")
+    engine = create_engine(C.engine_url(f"sqlite:///{db.as_posix()}"))
+    p = C.build_payload(C.read_snapshot(engine), SALT)
     assert len(p["lots"]) >= 10 and len(p["bookings"]) >= 10
     assert any(l["batch"] == "ZX24K07" for l in p["lots"])  # flagged lot travels; CAP's rule 2 excludes it
     assert all(len(b["patientRef"]) == 64 for b in p["bookings"])
-    assert "patient_name" not in json.dumps(p)
+    assert "patient_name" not in json.dumps(p) and "Synthetic Patient" not in json.dumps(p)
+    with pytest.raises(Exception):  # read-only: the connector can never write to the hospital database
+        with engine.begin() as c:
+            c.execute(text("DELETE FROM pharmacy_inventory"))
+
+
+def test_sqlite_urls_resolve_against_the_repo_and_missing_files_say_how_to_fix(tmp_path):
+    assert C.Config({}).db_url == "sqlite:///connector/hospital_c.db"
+    assert C.Config({"CONNECTOR_PG_URL": "postgresql://u:p@h/db"}).db_url == "postgresql://u:p@h/db"  # old name still works
+    assert C.Config({"CONNECTOR_DB_URL": "mysql+pymysql://u:p@h/db", "CONNECTOR_PG_URL": "x"}).db_url == "mysql+pymysql://u:p@h/db"
+    with pytest.raises(FileNotFoundError, match="npm run connector:seed"):
+        C.engine_url("sqlite:///connector/does-not-exist.db")
+    f = tmp_path / "x.db"
+    f.write_bytes(b"")
+    url = C.engine_url(f"sqlite:///{f.as_posix()}")
+    assert url.startswith("sqlite:///file:") and url.endswith("?mode=ro&uri=true")
+    assert C.engine_url("mssql+pyodbc://u:p@dsn") == "mssql+pyodbc://u:p@dsn"

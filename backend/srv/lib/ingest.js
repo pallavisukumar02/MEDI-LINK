@@ -96,7 +96,7 @@ async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' +
 async function recomputeAndAlert(hospitalIds) {
   const red = await coverdb.recompute(hospitalIds);
   for (const r of red) {
-    await notify({ hospital: r.hospital.ID, kind: 'SHORTFALL', severity: 'HIGH', ref: r.drug.ID,
+    await notify({ hospital: r.hospital.ID, kind: 'SHORTFALL', severity: 'HIGH', ref: r.drug.ID, dueDate: r.cover.firstAffectedDate,
       message: `${r.drug.genericName} ${r.drug.strength}: ${r.cover.shortfall} of ${r.cover.booked} booked doses cannot be covered in the next ${r.cover.windowDays} days (${r.cover.patientsAffected} patients affected first, from ${r.cover.firstAffectedDate})` });
   }
   return red;

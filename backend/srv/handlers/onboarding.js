@@ -40,6 +40,7 @@ module.exports = cds.service.impl(function () {
     const base = { hospitalId: h.ID, hospitalName: h.name, address: h.address, licenceNo, licenceValidTill: validTill, licenceValid: true, software, softwareLabel: LABEL[software], connected: !!h.connected };
     const head = `${h.name} · Licence valid till ${yearOf(validTill)} · Your stock is in ${LABEL[software]}.`;
     await audit.log(req.user.id, 'ONBOARDING_LICENCE_OK', { licenceNo, hospital: h.ID, software });
+    await UPDATE('medilink.Hospitals').set({ licenceCheckedAt: new Date().toISOString() }).where({ ID: h.ID, licenceCheckedAt: null });
 
     if (software === 'MEDISOFT') {
       const state = crypto.randomBytes(24).toString('hex');

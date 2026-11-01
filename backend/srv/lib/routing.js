@@ -50,14 +50,14 @@ function detourWaypoint(a, b, c) {
 
 function etaMinutes(km) { return Math.round(config.handlingMin + (km / config.citySpeedKmh) * 60); }
 
-/** Pure fallback routing used when no ORS key (or ORS fails). */
-function fallbackRoute(from, to, closures = []) {
+/** Pure fallback routing used when no ORS key (or ORS fails). straightKm: precomputed straight line (geo.js, HANA ST_Distance). */
+function fallbackRoute(from, to, closures = [], straightKm) {
   from = pt(from); to = pt(to);
   const active = closures.filter(c => c.active !== false).map(cl);
   for (const c of active) if (inside(from, c) || inside(to, c)) return { open: false, distanceKm: null, etaMin: null, provider: 'haversine', note: `Endpoint inside closure "${c.name}"` };
   const hits = active.filter(c => intersects(from, to, c));
   if (!hits.length) {
-    const km = haversineKm(from, to) * config.roadFactor;
+    const km = (straightKm ?? haversineKm(from, to)) * config.roadFactor;
     return { open: true, detour: false, distanceKm: round(km), etaMin: etaMinutes(km), provider: 'haversine' };
   }
   // one detour per blocking closure, in order along the path
@@ -101,11 +101,11 @@ async function orsRoute(from, to, closures) {
   return { open: true, detour: hits.length > 0, distanceKm: round(km), etaMin: Math.round(config.handlingMin + s.duration / 60), provider: 'ors', note: hits.length ? `Detour around ${hits.map(h => h.name).join(', ')}` : undefined };
 }
 
-async function route(from, to, closures = []) {
+async function route(from, to, closures = [], straightKm) {
   if (config.orsKey) {
     try { return await orsRoute(from, to, closures); } catch (e) { /* fall through to haversine */ }
   }
-  return fallbackRoute(from, to, closures);
+  return fallbackRoute(from, to, closures, straightKm);
 }
 
 const round = n => Math.round(n * 100) / 100;

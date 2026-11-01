@@ -7,6 +7,7 @@ const str = (v, d) => (v === undefined || v === '' ? d : String(v).trim());
 function load(env = process.env) {
   return {
     appBaseUrl: str(env.APP_BASE_URL, 'http://localhost:4004'),
+    timeZone: str(env.APP_TIME_ZONE, 'Asia/Kolkata'), // times shown to users ("arriving ~3:40 pm")
     safetyMarginPct: num(env.DEFAULT_SAFETY_MARGIN_PCT, 20),
     coverWindowDays: num(env.DEFAULT_COVER_WINDOW_DAYS, 14),
     expiryBufferDays: num(env.EXPIRY_BUFFER_DAYS, 7),

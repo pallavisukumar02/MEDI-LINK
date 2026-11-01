@@ -41,7 +41,8 @@ module.exports = cds.service.impl(function () {
 
   this.on('rank', wrap(async req => {
     await ownRequest(req, req.data.request);
-    return matching.rankRequest(req.data.request, { actor: req.user.id });
+    const refused = req.data.excludeRefused ? await SELECT.from('medilink.Transfers').columns('supplier_ID').where({ request_ID: req.data.request, status: { in: ['DECLINED', 'TIMED_OUT', 'REJECTED'] } }) : [];
+    return matching.rankRequest(req.data.request, { actor: req.user.id, excludeHospitals: [...new Set(refused.map(t => t.supplier_ID))] });
   }));
 
   this.on('choosePlan', wrap(async req => {

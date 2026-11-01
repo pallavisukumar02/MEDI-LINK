@@ -1,4 +1,5 @@
--- Least-privilege role for the MediLink connector: SELECT on the two views only, nothing else.
+-- For a real hospital on PostgreSQL (not needed for the SQLite demo DB): least-privilege role for the MediLink connector,
+-- SELECT on the two views only, nothing else. IT runs this once in the pharmacy database.
 -- Use it with CONNECTOR_PG_URL=postgresql://medilink_ro:medilink_ro@localhost:5432/hospital_c
 -- (demo password; in a real hospital IT sets its own). The views expose no patient names.
 DO $$ BEGIN

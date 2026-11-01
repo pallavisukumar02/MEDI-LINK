@@ -5,6 +5,7 @@
  *  - refreshes the date-relative synthetic seed in development
  *  - adds the non-OData endpoints: POST /ingest (connector token), POST /connector/pair,
  *    GET /oauth/medisoft/callback (OAuth 2.0 authorization-code redirect), GET /health
+ *  - mounts the experience layer (GET /me/home, POST /me/actions/:id, ...) from lib/http-routes.js
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
@@ -26,6 +27,10 @@ const htmlPage = (title, body) => `<!doctype html><html><head><meta charset="utf
 
 cds.on('bootstrap', app => {
   const json = express.json({ limit: '5mb' });
+  require('./lib/http-routes').mount(app); // /me/* experience layer, /health/integrations, /admin/metrics
+  // UI (frontend/): served here in development; on Cloud Foundry the app router serves it (copied at MTA build)
+  const ui = path.join(__dirname, '..', '..', 'frontend');
+  if (require('fs').existsSync(ui)) app.use(express.static(ui));
   app.get('/health', (_, res) => res.json({ status: 'UP', profile: profiles.join(','), synthetic: true }));
 
   // ---- IT handoff page linked from onboarding ("Waiting for your IT team") ----
@@ -36,7 +41,7 @@ cds.on('bootstrap', app => {
 <p>Hospital <b>${h || '(unknown)'}</b>. This small program reads two views from your pharmacy database, hashes patient IDs on your server, and pushes stock and chemo bookings to MediLink every 15 minutes. It never writes to your database.</p>
 <ol><li>Create a read-only DB user that can <code>SELECT</code> from <code>medilink_stock_v</code> and <code>medilink_schedule_v</code>.</li>
 <li>Install: <code>pip install -r connector/requirements.txt</code></li>
-<li>Set <code>CONNECTOR_PG_URL</code>, <code>PATIENT_REF_HASH_SALT</code> and <code>CONNECTOR_INGEST_URL=${base}/ingest</code>.</li>
+<li>Set <code>CONNECTOR_DB_URL</code> (any SQLAlchemy URL, e.g. <code>postgresql://medilink_ro:...@db-host/pharmacy</code>, <code>mysql+pymysql://...</code>, <code>mssql+pyodbc://...</code>), <code>PATIENT_REF_HASH_SALT</code> and <code>CONNECTOR_INGEST_URL=${base}/ingest</code>.</li>
 <li>Run once with the pairing code your pharmacist received: <code>python connector.py --pair &lt;CODE&gt;</code>, then <code>python connector.py</code> (loop) or schedule <code>python connector.py --once</code>.</li></ol>
 <p><small>The pairing code is single-use and expires after 24 hours. Revoke any time with "Disconnect" in MediLink.</small></p>`));
   });

@@ -15,11 +15,15 @@
  * Writes:
  *   backend/db/data/medilink-*.csv           CAP seed (H2..H5 already connected; H1 onboards live)
  *   mock-medisoft/data/seed.json             MediSoft HIS tenants H1 and H5 (raw MRNs stay inside MediSoft)
- *   connector/seed/init.sql                  Hospital C (H3) pharmacy PostgreSQL demo DB
+ *   connector/seed/init.sql                  Hospital C (H3) pharmacy demo DB (PostgreSQL dialect; npm run connector:seed builds a SQLite copy)
  *   seed/sap-sandbox-fixture.json            Offline fallback for the SAP sandbox puller (H2)
  *   seed/sheets/hebbal_stock_sheet.csv       Sheet-upload sample (H4) with messy column names
  *   seed/trust/cdsco_alert_sample.txt        CDSCO-style alert text for the LLM trust feed
  *   seed/.anchor                             anchor date of the last run
+ *
+ * Scale test: `npm run seed -- --hospitals 50` adds 45 more synthetic hospitals (H6..H50) to the CAP CSVs for
+ * the PRD section 12 performance targets. Run plain `npm run seed` to go back to the 5-hospital demo set
+ * (the demo and its tests expect exactly that).
  */
 const fs = require('fs');
 const path = require('path');
@@ -235,6 +239,50 @@ function build(anchor, now = new Date()) {
   return { HOSPITALS, DRUGS, LICENCES, PARTNERS, lots, bookings, capLots, capBookings, FLAGS, REQUESTS, TRANSFERS, TRANSFER_LOTS, APPROVALS, LEDGER, AUDIT, MATERIALS, anchor: iso(anchor), day };
 }
 
+// Real Bengaluru localities (OpenStreetMap); the hospitals placed there are fictional.
+const LOCALITIES = [
+  ['Malleshwaram', 13.0035, 77.5710], ['Indiranagar', 12.9784, 77.6408], ['Rajajinagar', 12.9910, 77.5550], ['Yelahanka', 13.1007, 77.5963],
+  ['Electronic City', 12.8452, 77.6602], ['HSR Layout', 12.9116, 77.6474], ['BTM Layout', 12.9166, 77.6101], ['Marathahalli', 12.9569, 77.7011],
+  ['JP Nagar', 12.9063, 77.5857], ['Basavanagudi', 12.9406, 77.5738], ['RT Nagar', 13.0213, 77.5946], ['Bellandur', 12.9304, 77.6784],
+  ['Vijayanagar', 12.9719, 77.5370], ['Sadashivanagar', 13.0068, 77.5813], ['KR Puram', 13.0076, 77.6950], ['Banaswadi', 13.0104, 77.6481],
+  ['Kengeri', 12.9139, 77.4854], ['Yeshwanthpur', 13.0285, 77.5409], ['Domlur', 12.9610, 77.6387], ['Shivajinagar', 12.9857, 77.6057],
+  ['Frazer Town', 12.9967, 77.6143], ['Bommanahalli', 12.9010, 77.6230], ['Hennur', 13.0358, 77.6431], ['Peenya', 13.0285, 77.5197], ['Ulsoor', 12.9817, 77.6194],
+];
+
+/**
+ * Extra synthetic hospitals H6..H<total> for scale tests: connected, licensed, random stock and bookings for every drug.
+ * Returns CAP rows; the 5 demo hospitals are untouched.
+ */
+function scale(anchor, total = 50, now = new Date()) {
+  const rnd = mulberry32(5050);
+  const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+  const day = n => iso(addDays(anchor, n));
+  const out = { HOSPITALS: [], LICENCES: [], capLots: [], capBookings: [] };
+  for (let i = 6; i <= total; i++) {
+    const id = 'H' + i;
+    const [loc, lat, long] = LOCALITIES[(i - 6) % LOCALITIES.length];
+    const jitter = () => Math.round((rnd() - 0.5) * 0.008 * 1e6) / 1e6;
+    const licenceNo = `KA-BLR-20B-${1000 + i}`;
+    out.HOSPITALS.push({ ID: id, licenceNo, name: `Synthetic Hospital ${i}, ${loc}`, address: `${loc}, Bengaluru (synthetic)`, lat: Math.round((lat + jitter()) * 1e6) / 1e6, long: Math.round((long + jitter()) * 1e6) / 1e6,
+      licenceValidTill: '2028-03-31', software: 'SHEET', safetyMarginPct: 20, coverWindowDays: 14, connected: true, lastSyncedAt: now.toISOString(), feedStale: false, adminEmail: `admin.h${i}@example.org`, synthetic: true });
+    out.LICENCES.push({ ID: 'LIC-' + id, partyId: id, partyType: 'HOSPITAL', licenceNo, licenceType: 'Form 20B/21B drug licence (synthetic)', validTill: '2028-03-31' });
+    for (const d of DRUGS) {
+      if (rnd() < 0.3) continue;
+      const [brandName, manufacturer] = BRANDS[d.ID][0];
+      const nLots = ri(1, 2);
+      for (let k = 1; k <= nLots; k++) {
+        out.capLots.push({ ID: `${id}-${d.ID.slice(2)}-${k}`, hospital_ID: id, drug_ID: d.ID, brandName, manufacturer, batchNo: `${d.ID.slice(2, 6)}S${i}${k}${ri(100, 999)}`,
+          quantity: ri(5, 40), expiryDate: day(ri(60, 400)), storageClass: d.storageClass, sealed: rnd() > 0.05, quarantined: false, source: 'SHEET', lastSynced: now.toISOString() });
+      }
+      for (let n = 0, nb = ri(0, 6); n < nb; n++) {
+        const appt = `SYN${i}-APT-${d.ID.slice(2)}-${n + 1}`;
+        out.capBookings.push({ ID: `${id}:${appt}`, hospital_ID: id, patientRef: hashRef(SEED_REF_SALT, `SYN${i}-MRN-${d.ID}-${n}`), drug_ID: d.ID, doseUnits: ri(1, 2), scheduledDate: day(ri(0, 13)), intent: ['CURATIVE', 'ADJUVANT', 'PALLIATIVE'][ri(0, 2)], source: 'SHEET' });
+      }
+    }
+  }
+  return out;
+}
+
 function write(data, { quiet } = {}) {
   for (const d of Object.values(OUT)) fs.mkdirSync(d, { recursive: true });
   const w = (name, rows, cols) => fs.writeFileSync(path.join(OUT.cap, `medilink-${name}.csv`), csv(rows, cols));
@@ -323,10 +371,18 @@ function isStale(env = process.env) {
 }
 
 function run(opts = {}) {
-  const data = build(anchorDate(opts.env || process.env), opts.now || new Date());
+  const anchor = anchorDate(opts.env || process.env);
+  const data = build(anchor, opts.now || new Date());
+  if (opts.hospitals > 5) {
+    const x = scale(anchor, opts.hospitals, opts.now || new Date());
+    for (const k of Object.keys(x)) data[k] = [...data[k], ...x[k]];
+  }
   write(data, opts);
   return data;
 }
 
-module.exports = { run, build, isStale, hashRef, anchorDate, SEED_REF_SALT };
-if (require.main === module) run();
+module.exports = { run, build, scale, isStale, hashRef, anchorDate, SEED_REF_SALT };
+if (require.main === module) {
+  const i = process.argv.indexOf('--hospitals');
+  run({ hospitals: i > 0 ? Number(process.argv[i + 1]) : 5 });
+}

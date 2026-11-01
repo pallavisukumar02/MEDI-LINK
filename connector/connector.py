@@ -3,7 +3,8 @@
 MediLink read-only connector for hospitals with an in-house pharmacy database ("database path").
 
 Runs on the hospital's own server. Every CONNECTOR_SYNC_INTERVAL_SEC it:
-  1. reads two views from the local PostgreSQL DB via SQLAlchemy (read-only, SELECT only):
+  1. reads two views from the local pharmacy DB via SQLAlchemy (read-only, SELECT only). Any SQLAlchemy URL works
+     (PostgreSQL, MySQL, SQL Server, ...); the demo default is a SQLite file, opened read-only:
        medilink_stock_v     lot_ref, generic, strength, form, brand, mfr, batch, qty_on_hand, exp_date, storage, seal_ok
        medilink_schedule_v  appt_id, mrn, generic, strength, form, units, appt_date, intent
   2. replaces every MRN with SHA-256("<PATIENT_REF_HASH_SALT>:<mrn>") on this server, so no raw patient
@@ -16,8 +17,9 @@ Then:  python connector.py          (loop)
        python connector.py --once   (single sync, e.g. from cron / Task Scheduler)
        python connector.py --dry-run (print the payload summary, push nothing)
 
-Config (env or backend/.env): CONNECTOR_PG_URL, CONNECTOR_INGEST_URL, CONNECTOR_SYNC_INTERVAL_SEC,
-PATIENT_REF_HASH_SALT, CONNECTOR_TOKEN_FILE (default ./.connector-token). Secrets are never printed.
+Config (env or backend/.env): CONNECTOR_DB_URL (default sqlite:///connector/hospital_c.db, relative to the repo;
+CONNECTOR_PG_URL is still read as a fallback), CONNECTOR_INGEST_URL, CONNECTOR_SYNC_INTERVAL_SEC, PATIENT_REF_HASH_SALT,
+CONNECTOR_TOKEN_FILE (default ./.connector-token). Secrets are never printed. Demo DB: npm run connector:seed
 """
 from __future__ import annotations
 
@@ -40,6 +42,8 @@ from sqlalchemy.engine import Engine
 
 LOG = logging.getLogger("medilink-connector")
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+DEFAULT_DB_URL = "sqlite:///connector/hospital_c.db"
 STOCK_VIEW = "medilink_stock_v"
 SCHEDULE_VIEW = "medilink_schedule_v"
 
@@ -61,7 +65,7 @@ def load_dotenv(path: Path) -> None:
 class Config:
     def __init__(self, env: Optional[Dict[str, str]] = None):
         e = os.environ if env is None else env
-        self.pg_url = e.get("CONNECTOR_PG_URL", "postgresql://pharmacy:pharmacy@localhost:5432/hospital_c")
+        self.db_url = e.get("CONNECTOR_DB_URL") or e.get("CONNECTOR_PG_URL") or DEFAULT_DB_URL
         self.ingest_url = e.get("CONNECTOR_INGEST_URL", "http://localhost:4004/ingest")
         self.interval = int(e.get("CONNECTOR_SYNC_INTERVAL_SEC", "900") or 900)
         self.salt = e.get("PATIENT_REF_HASH_SALT", "")
@@ -75,7 +79,17 @@ class Config:
 
 
 def engine_url(url: str) -> str:
-    """postgresql:// -> an installed driver. SQLAlchemy 2.1 defaults to psycopg (v3); we ship psycopg2-binary."""
+    """
+    sqlite:///<relative path> -> absolute path under the repo, opened read-only (the connector never writes).
+    postgresql:// -> an installed driver. SQLAlchemy 2.1 defaults to psycopg (v3); we ship psycopg2-binary.
+    Other SQLAlchemy URLs (mysql+pymysql://, mssql+pyodbc://, ...) pass through unchanged.
+    """
+    if url.startswith("sqlite:///") and not url.startswith("sqlite:///file:"):
+        path = Path(url[len("sqlite:///"):])
+        path = path if path.is_absolute() else ROOT / path
+        if not path.is_file():
+            raise FileNotFoundError(f"{path} not found: create the demo database with `npm run connector:seed`")
+        return f"sqlite:///file:{path.as_posix()}?mode=ro&uri=true"
     for prefix in ("postgresql://", "postgres://"):
         if url.startswith(prefix):
             rest = url[len(prefix):]
@@ -215,7 +229,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
         if not a.once:
             return 0
-    engine = create_engine(engine_url(cfg.pg_url), pool_pre_ping=True)
+    try:
+        engine = create_engine(engine_url(cfg.db_url), pool_pre_ping=True)
+    except FileNotFoundError as e:
+        LOG.error("%s", e)
+        return 1
     tok = (load_token(cfg.token_file) or {}).get("token")
     while True:
         try:

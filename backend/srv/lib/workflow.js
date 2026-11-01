@@ -180,7 +180,8 @@ async function fallback(requestId, actor = 'system:fallback') {
 
 /** CAP-native 30-minute timer. Skips transfers that a BPA workflow instance owns. */
 async function timeoutSweep(now = new Date()) {
-  const due = await SELECT.from(T).where({ status: 'PENDING_SUPPLIER', supplierResponseDueAt: { '<': now.toISOString() } });
+  // compared in JS: an ISO "...Z" string against a TIMESTAMP column is not portable to HANA
+  const due = (await SELECT.from(T).where({ status: 'PENDING_SUPPLIER' })).filter(t => t.supplierResponseDueAt && new Date(t.supplierResponseDueAt) < now);
   const out = [];
   for (const t of due) {
     if (t.workflowInstanceId && config.approvalMode === 'bpa') continue;
@@ -201,6 +202,7 @@ async function approve(id, actor) {
   await audit.log(actor, 'APPROVED', { transfer: id, level, risks: t.riskReasons, next: status });
   ws.emit('status', { transferId: id, status, message: level === 1 && status !== 'APPROVED' ? `Second sign-off required (${t.riskReasons})` : 'Approved' });
   if (status === 'APPROVED') {
+    await require('./notes').writeTransferNote(id);
     const assigned = await delivery.assignPartner(id, actor);
     return toOut(await load(id), assigned ? `Approved; partner ${assigned.ID} assigned` : 'Approved; no eligible partner yet');
   }

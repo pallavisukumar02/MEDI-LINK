@@ -14,3 +14,4 @@ annotate AuditService      with @impl: 'srv/handlers/audit.js';
 annotate TrustService      with @impl: 'srv/handlers/trust.js';
 annotate AdminService      with @impl: 'srv/handlers/admin.js';
 annotate SettingsService   with @impl: 'srv/handlers/settings.js';
+annotate TrackingService   with @impl: 'srv/handlers/tracking.js';

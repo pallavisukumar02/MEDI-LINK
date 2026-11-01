@@ -9,6 +9,8 @@ description: MediLink - SAP Hackfest 2026 prototype (synthetic data). FREE SAP B
 #
 # Free plans used: hana/hdi-shared (on a "hana-free" HANA Cloud instance), xsuaa/application, destination/lite,
 # Cloud Foundry runtime free quota. No Integration Suite, no Event Mesh, nothing paid.
+# Users open the app router URL (medilink-approuter); it logs them in with XSUAA and forwards to medilink-srv.
+# Step-by-step: docs/SAP_GO_LIVE.md
 
 parameters:
   enable-parallel-deployments: true
@@ -21,6 +23,8 @@ build-parameters:
         - npm run build --prefix backend
         # offline fixture for the SAP sandbox puller, shipped inside the deployed srv
         - node -e "require('fs').mkdirSync('backend/gen/srv/srv/data',{recursive:true});require('fs').copyFileSync('seed/sap-sandbox-fixture.json','backend/gen/srv/srv/data/sap-sandbox-fixture.json')"
+        # the UI (frontend/) is served by the app router
+        - node -e "require('fs').cpSync('frontend','app/router/resources',{recursive:true})"
 
 modules:
   # ---------------- CAP service ----------------
@@ -62,6 +66,25 @@ modules:
       - name: medisoft-api
         properties:
           MEDISOFT_BASE_URL: ~{medisoft-url}
+
+  # ---------------- App router: one URL for users, XSUAA login, serves future UI apps (app/router/resources) ----------------
+  - name: medilink-approuter
+    type: approuter.nodejs
+    path: app/router
+    parameters:
+      memory: 128M
+      disk-quota: 256M
+    build-parameters:
+      ignore: ["node_modules/"]
+    requires:
+      - name: medilink-uaa
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api            # referenced by app/router/xs-app.json
+          url: ~{srv-url}
+          forwardAuthToken: true   # CAP receives the user's XSUAA token (roles + hospital / partner attributes)
+          timeout: 60000
 
   # ---------------- HDI deployer (schema + synthetic seed CSVs) ----------------
   - name: medilink-db-deployer

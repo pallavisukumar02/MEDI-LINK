@@ -13,7 +13,8 @@ const REASONS = { SPURIOUS: 'SPURIOUS', NSQ: 'NSQ', 'NOT OF STANDARD QUALITY': '
 async function pdfText(base64) {
   let pdfParse;
   try { pdfParse = require('pdf-parse/lib/pdf-parse.js'); } catch { throw err(501, 'PDF_PARSER_MISSING', 'pdf-parse is not installed; send the alert as text'); }
-  const r = await pdfParse(Buffer.from(base64, 'base64'));
+  // copy: small Buffers share Node's pool (byteOffset != 0) and pdf.js reads the whole ArrayBuffer
+  const r = await pdfParse(new Uint8Array(Buffer.from(base64, 'base64')));
   return r.text;
 }
 

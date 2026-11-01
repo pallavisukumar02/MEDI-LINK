@@ -48,6 +48,7 @@ entity Hospitals : managed {
       lastSyncedAt     : Timestamp;
       feedStale        : Boolean default false;
       adminEmail       : String(120);
+      licenceCheckedAt : Timestamp; // onboarding step 1 done (licence looked up and valid)
       synthetic        : Boolean default true;
       lots             : Association to many Lots on lots.hospital = $self;
       bookings         : Association to many Bookings on bookings.hospital = $self;
@@ -199,6 +200,7 @@ entity Transfers : cuid, managed {
   proofOfCondition      : String(4); // PASS | FAIL
   proofDetail           : LargeString;
   qtyReceived           : Integer;
+  transferNote          : String(1000); // handling note for partner + receiver, written on approval
   workflowInstanceId    : String(80);
   conditionLogs         : Association to many ConditionLogs on conditionLogs.transfer = $self;
 }
@@ -283,8 +285,27 @@ entity Notifications : cuid {
   severity  : String(10);
   message   : String(500);
   ref       : String(80);
+  dueDate   : Date; // when the problem bites (shortfall: first affected booking) -> alert lead time
   createdAt : Timestamp;
   read      : Boolean default false;
+}
+
+/** Experience layer: one row per Idempotency-Key (hashed with the user), so a double tap runs an action once. */
+entity IdempotencyKeys {
+  key keyHash    : String(64);
+      actionId   : String(40);
+      httpStatus : Integer;
+      response   : LargeString;
+      createdAt  : Timestamp;
+}
+
+/** Stock-register photo read by the LLM, held until the pharmacist confirms it (nothing is saved before). */
+entity PhotoPreviews {
+  key ID          : UUID;
+      hospital_ID : String(10);
+      rows        : LargeString;
+      createdAt   : Timestamp;
+      usedAt      : Timestamp;
 }
 
 /** Encrypted local token store (development). In hybrid/production tokens live in the Destination service. */

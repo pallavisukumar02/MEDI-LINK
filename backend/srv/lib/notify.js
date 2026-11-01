@@ -6,8 +6,8 @@ const http = require('./http');
 const ws = require('./ws');
 const LOG = cds.log('notify');
 
-async function notify({ hospital, kind, severity = 'INFO', message, ref }) {
-  const row = { ID: cds.utils.uuid(), hospital_ID: hospital || null, kind, severity, message, ref: ref || null, createdAt: new Date().toISOString(), read: false };
+async function notify({ hospital, kind, severity = 'INFO', message, ref, dueDate }) {
+  const row = { ID: cds.utils.uuid(), hospital_ID: hospital || null, kind, severity, message, ref: ref || null, dueDate: dueDate || null, createdAt: new Date().toISOString(), read: false };
   await INSERT.into('medilink.Notifications').entries(row);
   ws.emit('alert', { hospitalId: hospital, kind, severity, message, ref });
   if (config.alertNotificationEnabled) sendAlertNotification(row).catch(e => LOG.warn('Alert Notification failed:', e.message));

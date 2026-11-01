@@ -7,7 +7,6 @@ const cds = require('@sap/cds');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
-const http = require('./http');
 const LOG = cds.log('llm');
 
 let override; // tests can inject a fake: llm.setClient(async (messages) => '...')
@@ -25,41 +24,37 @@ function enabled() {
   return config.llmProvider === 'aicore' && !!aicoreKey() && !!config.aicoreModel;
 }
 
-let tok, deploymentUrl;
-async function aicoreToken(k) {
-  if (tok && tok.exp > Date.now() + 30000) return tok.v;
-  const res = await http.request(`${k.url}/oauth/token`, {
-    method: 'POST', headers: { Authorization: 'Basic ' + Buffer.from(`${k.clientid}:${k.clientsecret}`).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'grant_type=client_credentials',
-  });
-  if (res.status !== 200) throw new Error('AI Core token failed: ' + res.status);
-  tok = { v: res.json.access_token, exp: Date.now() + (res.json.expires_in || 3600) * 1000 };
-  return tok.v;
-}
-async function findDeployment(k, t) {
-  if (deploymentUrl) return deploymentUrl;
-  const base = k.serviceurls?.AI_API_URL;
-  const res = await http.request(`${base}/v2/lm/deployments?status=RUNNING`, { headers: { Authorization: 'Bearer ' + t, 'AI-Resource-Group': config.aicoreResourceGroup } });
-  if (res.status !== 200) throw new Error('AI Core deployments failed: ' + res.status);
-  const d = (res.json.resources || []).find(r => JSON.stringify(r.details || {}).includes(config.aicoreModel));
-  if (!d) throw new Error(`No RUNNING deployment for model ${config.aicoreModel} in resource group ${config.aicoreResourceGroup}`);
-  deploymentUrl = d.deploymentUrl;
-  return deploymentUrl;
+/**
+ * SAP AI Core generative AI hub through the SAP Cloud SDK for AI (@sap-ai-sdk/foundation-models).
+ * The SDK reads credentials from the "aicore" service binding or AICORE_SERVICE_KEY; for local hybrid runs we
+ * hand it the key file named by AICORE_SERVICE_KEY_PATH (in memory only, never logged).
+ */
+let client;
+function sdkClient() {
+  if (client) return client;
+  if (!process.env.AICORE_SERVICE_KEY && !cds.env.requires?.aicore?.credentials) {
+    const k = aicoreKey();
+    if (k) process.env.AICORE_SERVICE_KEY = JSON.stringify(k);
+  }
+  const { AzureOpenAiChatClient } = require('@sap-ai-sdk/foundation-models');
+  client = new AzureOpenAiChatClient({ modelName: config.aicoreModel, resourceGroup: config.aicoreResourceGroup });
+  return client;
 }
 
-/** messages: [{role, content}] -> string */
+/** messages: [{role, content}] -> string. content may be an array of parts (text + image_url) for vision models. */
 async function chat(messages, { maxTokens = 800, temperature = 0 } = {}) {
   if (override) return override(messages);
   if (!enabled()) return null;
-  const k = aicoreKey();
-  const t = await aicoreToken(k);
-  const url = await findDeployment(k, t);
-  const res = await http.request(`${url}/chat/completions?api-version=2024-02-01`, {
-    method: 'POST', headers: { Authorization: 'Bearer ' + t, 'AI-Resource-Group': config.aicoreResourceGroup, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, max_tokens: maxTokens, temperature }), timeoutMs: 30000,
-  });
-  if (res.status !== 200) throw new Error('AI Core chat failed: ' + res.status);
-  return res.json.choices?.[0]?.message?.content ?? null;
+  const res = await sdkClient().run({ messages, max_tokens: maxTokens, temperature });
+  return res.getContent() ?? null;
+}
+
+/** One image + an instruction -> string (stock-register photos). Same guard rules as chat(). */
+function vision(prompt, imageBase64, mimeType = 'image/jpeg', opts) {
+  return chat([
+    { role: 'system', content: 'You read photos of pharmacy stock registers. Reply with JSON only. Never invent values.' },
+    { role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }] },
+  ], { maxTokens: 2000, ...opts });
 }
 
 /** Extract the first JSON value from an LLM reply. */
@@ -79,4 +74,4 @@ async function safeChat(messages, opts) {
   try { return await chat(messages, opts); } catch (e) { LOG.warn('LLM call failed, continuing without it:', e.message); return null; }
 }
 
-module.exports = { enabled, chat, safeChat, extractJson, setClient };
+module.exports = { enabled, chat, vision, safeChat, extractJson, setClient };

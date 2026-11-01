@@ -216,6 +216,10 @@ service SyncService {
     hospitalId : String; mapping : LargeString; mappingSource : String; rows : Integer; unresolved : LargeString; preview : LargeString; ingested : IngestResult;
   };
   action syncNow(hospital : String) returns array of IngestResult;
+  /** Stock-register photo (FR-04, LLM). confirm=false: read + preview only (nothing saved). confirm=true + previewId: save via ingest. */
+  action uploadPhoto(imageBase64 : LargeString, mimeType : String, hospital : String, confirm : Boolean, previewId : UUID) returns {
+    hospitalId : String; previewId : UUID; rows : Integer; preview : LargeString; dropped : LargeString; ingested : IngestResult;
+  };
 }
 
 // =====================================================================
@@ -234,7 +238,8 @@ service RequestService {
   function prefill(drug : String, window : Integer) returns RequestPrefill;
   /** One-tap request: any omitted field is prefilled from the shortfall card. Ranks immediately. */
   action createRequest(drug : String, qty : Integer, neededBy : Date, allowBrandSwitch : Boolean, note : String, window : Integer) returns { request : UUID; status : String; qty : Integer; neededBy : Date; allowBrandSwitch : Boolean; preferredBrand : String; ranking : RankResult; };
-  action rank(request : UUID) returns RankResult;
+  /** excludeRefused: skip suppliers that already declined, timed out or were rejected for this request ("Find a supplier again") */
+  action rank(request : UUID, excludeRefused : Boolean) returns RankResult;
   action choosePlan(request : UUID, rank : Integer) returns array of TransferOut;
   action cancelRequest(request : UUID) returns { request : UUID; status : String; };
 }
@@ -401,4 +406,9 @@ service TrackingService {
   event replan { transferId : UUID; distanceKm : Decimal(8, 2); etaMin : Integer; open : Boolean; note : String; }
   event status { transferId : UUID; status : String; message : String; }
   event alert { hospitalId : String; kind : String; severity : String; message : String; ref : String; }
+  /** Same journey shape as GET /me/home -> journeys[], built for the receiving socket's point of view. */
+  event journey.updated { journeyId : String; perspective : String; journey : Map; }
+  /** On connect each socket joins its own contexts (hospital / partner / role); clients cannot join others. */
+  action wsConnect();
+  action wsContext(context : String, contexts : array of String, exit : Boolean, reset : Boolean);
 }

@@ -6,7 +6,7 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 
 function python() {
   for (const exe of [process.env.PYTHON, 'python3', 'python', 'py'].filter(Boolean)) {
-    const r = spawnSync(exe, ['-c', 'import ortools, fastapi, uvicorn'], { stdio: 'ignore', shell: process.platform === 'win32' });
+    const r = spawnSync(exe, ['-c', 'import ortools, fastapi, uvicorn'], { stdio: 'ignore' });
     if (r.status === 0) return exe;
   }
   return null;
@@ -22,7 +22,7 @@ async function waitFor(url, ms = 30000) {
 }
 
 function start(cmd, args, cwd, env) {
-  const p = spawn(cmd, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' });
+  const p = spawn(cmd, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' && !path.isAbsolute(cmd) });
   p.output = '';
   p.stdout.on('data', d => (p.output += d));
   p.stderr.on('data', d => (p.output += d));
@@ -43,6 +43,7 @@ async function startMatcher(port, env = {}) {
   return p;
 }
 
-function stop(...ps) { for (const p of ps) if (p && !p.killed) p.kill(); }
+// Windows: the matcher runs under cmd.exe and p.kill() would orphan python, so kill the whole tree
+function stop(...ps) { for (const p of ps) if (p && !p.killed) { if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(p.pid), '/T', '/F'], { stdio: 'ignore' }); else p.kill(); } }
 
 module.exports = { startMedisoft, startMatcher, stop, python, ROOT };

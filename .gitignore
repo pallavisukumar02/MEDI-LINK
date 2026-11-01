@@ -15,6 +15,7 @@ resources/
 *.mtar
 .token-vault/
 connector/.connector-token
+connector/hospital_c.db
 secrets.mtaext
 *.mtaext
 !secrets.mtaext.example
