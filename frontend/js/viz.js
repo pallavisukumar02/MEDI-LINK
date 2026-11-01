@@ -2,8 +2,8 @@
 /* MediLink data visuals in a pharmacy vocabulary: glass vials, blister packs, capsules, a pill organiser, a cold-chain
    trace. No library. Every API string is escaped (esc) or set with textContent. Under the CSP markup never carries
    style attributes: sizes go through el.style / setProperty or SVG attributes. Status is always colour AND a word or
-   number (visible or in the aria-label). Entrances live in css/viz.css behind prefers-reduced-motion; the only loop
-   (the live dot) pauses offscreen. Uses esc, dateIN, timeIN from ui.js. */
+   number (visible or in the aria-label). Entrances live in css/viz.css behind prefers-reduced-motion; the map's
+   loops pause in a hidden tab. Uses esc, dateIN, timeIN from ui.js. */
 
 const fmtN = v => Number(v ?? 0).toLocaleString('en-IN');
 let vzSeq = 0;
@@ -24,8 +24,6 @@ document.body.insertAdjacentHTML('afterbegin', `<svg class="vz-defs" width="0" h
   <linearGradient id="vz-capsh" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset=".3" stop-color="#fff" stop-opacity="0"/><stop offset=".75" stop-color="#8F867E" stop-opacity="0"/><stop offset="1" stop-color="#8F867E" stop-opacity=".45"/></linearGradient>
 </defs></svg>`);
 document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('vz-hidden', document.hidden));
-const vzIO = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => e.target.classList.toggle('vz-paused', !e.isIntersecting))) : null;
-const watchLoop = el => { vzIO?.observe(el); return () => vzIO?.unobserve(el); };
 
 // ---------------------------------------------------------------- tooltip (value first, label second)
 let tipEl = null;
@@ -319,17 +317,17 @@ function tempTrace(el, s = {}) {
 }
 
 // ---------------------------------------------------------------- heartbeat: feed health as an ECG strip
-const FEED_WORD = { live: 'Live', stale: 'Out of date', offline: 'Offline' };
+const FEED_WORD = { live: 'Up to date', stale: 'Out of date', offline: 'Offline' };
 function heartbeat(el, { feed = 'offline', lastSyncedAt } = {}) {
   const f = FEED_WORD[feed] ? feed : 'offline', amp = { live: 1, stale: 0.3, offline: 0 }[f], m = 16;
   let d = `M0,${m}`;
   for (let x = 0; x < 90; x += 34) d += `H${x + 8}l3,${-2 * amp}l3,${2 * amp}h4l2,${3 * amp}l3,${-14 * amp}l3,${17 * amp}l2,${-6 * amp}h3l3,${-3 * amp}l3,${3 * amp}`;
   d += 'H110';
-  const dot = f === 'live' ? `<circle class="vz-hb-ring vz-loop" cx="112" cy="${m}" r="6" fill="#A9DFC1"/><circle cx="112" cy="${m}" r="3.4" fill="#2f9a68"/>`
+  const dot = f === 'live' ? `<circle cx="112" cy="${m}" r="3.4" fill="#2f9a68"/>`
     : f === 'stale' ? `<circle cx="112" cy="${m}" r="3.6" fill="#FBEDC2" stroke="#9A6700" stroke-width="1.6"/>` : `<circle cx="112" cy="${m}" r="3" fill="#B4BAC4"/>`;
   el.classList.add('vz-hb');
   el.innerHTML = `<svg viewBox="0 0 120 30" aria-hidden="true"><path class="vz-hb-line ${f}" d="${d}" pathLength="1"/>${dot}</svg><span class="vz-hb-t"><b class="vz-word vw-${{ live: 'mint', stale: 'sun', offline: 'grey' }[f]}">${FEED_WORD[f]}</b><small>${esc(ago(lastSyncedAt))}</small></span>`;
-  return f === 'live' ? watchLoop(el) : () => {};
+  return () => {};
 }
 
 // ---------------------------------------------------------------- layeredVial: usable / expiring / expired on a shared scale

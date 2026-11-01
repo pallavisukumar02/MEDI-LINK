@@ -81,10 +81,11 @@ function createPlanner(opts = {}) {
         if (!progress.has(s.ID)) {
           const started = s.pickedUpAt ? Date.parse(s.pickedUpAt) : o.now();
           // carry on from the last reported position (a restart must not send the rider back); a new delivery starts early on
-          const resume = s.lastLat != null ? Math.min(0.97, fractionAt(pathOf(s), { lat: s.lastLat, long: s.lastLong })) : null;
+          const resume = s.lastLat != null ? Math.min(1, fractionAt(pathOf(s), { lat: s.lastLat, long: s.lastLong })) : null;
           progress.set(s.ID, resume ?? Math.min(0.5, Math.max(0.02, (o.now() - started) / eta)));
         } else {
-          progress.set(s.ID, Math.min(0.97, progress.get(s.ID) + (o.speedup * o.intervalSec * 1000) / eta));
+          progress.set(s.ID, Math.min(1, progress.get(s.ID) + // the rider parks at the drop and waits for the receiving pharmacy's scan
+             (o.speedup * o.intervalSec * 1000) / eta));
         }
         const pos = interpolate(pathOf(s), progress.get(s.ID));
         let temperatureC = normalTemp(s, o.rnd);

@@ -173,9 +173,6 @@
 .vz-hb-line.offline{stroke:#B4BAC4;stroke-dasharray:3 3}
 .vz-hb-t{display:grid;gap:3px;justify-items:start}
 .vz-hb-t small{font:400 11px/1 var(--f-mono);color:var(--body);white-space:nowrap}
-.vz-hb-ring{transform-box:fill-box;transform-origin:center;animation:vz-breathe 2s ease-in-out infinite}
-@keyframes vz-breathe{0%,100%{transform:scale(.6);opacity:.9}50%{transform:scale(1.25);opacity:.25}}
-.vz-paused .vz-loop,.vz-hidden .vz-loop{animation-play-state:paused}
 
 /* ---------------------------------------------------------------- layered vial */
 .vz-lvial{display:inline-flex;align-items:center;gap:12px}
@@ -238,7 +235,7 @@
   .vz-pc{animation:vz-fade .5s ease both}
   @keyframes vz-fade{from{opacity:0;transform:translateY(4px)}}
 }
-@media (prefers-reduced-motion:reduce){.vz-wave,.vz-hb-ring,.vz-ep,.ml-ants,.ml-rider .ring,.ml-rider .pulse{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.vz-wave,.vz-ep,.ml-ants,.ml-rider .ring,.ml-rider .pulse{animation:none!important}}
 
 /* ---------------------------------------------------------------- live map (app map well only; courier keeps app.css) */
 .ml-map .leaflet-tile-pane{filter:saturate(.45) brightness(1.06) contrast(.9)} /* softer OSM colours, close to the app's pastels */

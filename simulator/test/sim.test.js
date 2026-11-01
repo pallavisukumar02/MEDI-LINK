@@ -45,12 +45,13 @@ test('exactly one deliberate excursion, on one shipment, after N ticks', () => {
   }
 });
 
-test('no excursion when disabled; shipments advance but stop short of arrival', () => {
+test('no excursion when disabled; shipments advance to the drop and wait there', () => {
   const pl = createPlanner({ excursion: false, speedup: 1000, rnd: fixed });
   let last;
   for (let i = 0; i < 20; i++) last = pl.next([cold]);
   assert.ok(last.every(r => !r.excursion));
-  assert.strictEqual(last[0].progress, 0.97);
+  assert.strictEqual(last[0].progress, 1);
+  assert.deepStrictEqual([last[0].lat, last[0].long], [Number(cold.toLat), Number(cold.toLong)]);
 });
 
 test('tick() lists the courier links as admin, picks up after a minute, posts readings through each link', async () => {

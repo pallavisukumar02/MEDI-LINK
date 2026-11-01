@@ -217,7 +217,7 @@ function viewLogin() {
 const ALERT_WORD = { LOW_STOCK: 'Low stock', OUT_OF_STOCK: 'Out of stock', EXPIRING: 'Expiring', EXPIRED: 'Expired', SHORTFALL: 'Shortfall', EXCURSION: 'Temperature', STALE_FEED: 'Data out of date', LICENCE_EXPIRY: 'Licence' };
 const ALERT_GLYPH = { LOW_STOCK: 'low', OUT_OF_STOCK: 'out', EXPIRING: 'expiring', EXPIRED: 'expired', SHORTFALL: 'short', EXCURSION: 'alert', STALE_FEED: 'hospital', LICENCE_EXPIRY: 'alert' };
 const STOCK_KINDS = new Set(['LOW_STOCK', 'OUT_OF_STOCK', 'EXPIRING', 'EXPIRED']);
-const CONN = { connected: ['live', 'Live'], stale: ['stale', 'Data out of date'], never: ['stale', 'Waiting for first sync'], disconnected: ['off', 'Not connected'] };
+const CONN = { stale: ['stale', 'Data out of date'], never: ['stale', 'Waiting for first sync'], disconnected: ['off', 'Not connected'] }; // a working feed shows nothing
 const COVER_WORD = { short: 'Short', low: 'Below safety margin', covered: 'Covered', none: 'No bookings' };
 const shortHospital = name => String(name || '').split(',')[0];
 /** Visuals come from viz.js; one that fails leaves its slot empty instead of breaking the screen. */
@@ -236,9 +236,9 @@ function appShell(active, content, quiet) {
   document.body.className = 'route-app';
   const h = lastHome, admin = role() === 'admin', c = h?.hospital?.connection;
   const links = admin ? [['#/home', 'Overview'], ['#/city', 'City']] : [['#/home', 'Home'], ['#/stock', 'Stock'], ['#/city', 'City']];
-  const [tone, word] = c ? CONN[c.status] || ['off', c.status] : [];
+  const [tone, word] = (c && CONN[c.status]) || [];
   const who = admin ? '<span class="who-n">Administrator</span>'
-    : h?.hospital ? `<span class="who-n">${esc(shortHospital(h.hospital.name))}</span>${c ? `<span class="feed f-${tone}" title="${esc(c.text)}"><i class="livedot" aria-hidden="true"></i>${esc(word)}</span>` : ''}` : '';
+    : h?.hospital ? `<span class="who-n">${esc(shortHospital(h.hospital.name))}</span>${word ? `<span class="feed f-${tone}" title="${esc(c.text)}"><i class="livedot" aria-hidden="true"></i>${esc(word)}</span>` : ''}` : '';
   $('#view').innerHTML = `
     <header class="nav glass">
       <a class="brand" href="#/home">${CAP_SVG}<span class="wordmark">MediLink</span></a>
@@ -270,7 +270,6 @@ function tile({ kind, label, value, of, sub, tone = 'ink', zeroOk, href, filter,
 }
 const emptyState = text => `<div class="empty">${vz(() => emptyArt())}<p class="empty-t">${esc(text)}</p></div>`;
 const countBadge = n => (n ? `<span class="count">${esc(n)}</span>` : '');
-const LIVE_NOTE = '<span class="feed f-live"><i class="livedot" aria-hidden="true"></i>Live</span>';
 /** Shown only when the hospital's stock data is not live (the one place that says so). */
 function feedBanner(h) {
   const c = h?.hospital?.connection;
@@ -514,7 +513,7 @@ async function viewHome(quiet) {
         sf('expired', 'Expired', ss.expired, 'rose', 'expired', 'Batches to take off the shelf', 'None on the shelf'),
       ].join('') : ''}
       ${pane('alerts-h', 'Alerts', alerts.length ? alertStack(alerts, 'home-al') : emptyState(h.empty?.alerts || 'No alerts. All clear.'), { label: 'Stock / expiry / deliveries', right: countBadge(alerts.length), cls: 's5' })}
-      ${pane('j-h', 'Requests & deliveries', h.journeys.length ? `<div class="orders">${h.journeys.map(orderCard).join('')}</div>` : emptyState(h.empty?.journeys || 'No medicine on the move for you right now.'), { label: 'Swap / lend / borrow', right: LIVE_NOTE, cls: 's7' })}
+      ${pane('j-h', 'Requests & deliveries', h.journeys.length ? `<div class="orders">${h.journeys.map(orderCard).join('')}</div>` : emptyState(h.empty?.journeys || 'No medicine on the move for you right now.'), { label: 'Swap / lend / borrow', cls: 's7' })}
     </div>`, quiet);
   if (drugs.length) mount(() => capsuleRing($('#ring'), drugs, { windowDays: cs.windowDays, onSelect: x => {
     const d = typeof x === 'string' ? drugs.find(v => v.id === x) : x;
@@ -651,7 +650,7 @@ function trackingSection(el, journeyId) {
     destroy: clear,
   };
 }
-const legHtml = (l, persp) => `<section class="pane leg rise" data-leg="${esc(l.transferId)}" aria-label="Live tracking: ${esc(l.drug?.name)}">
+const legHtml = (l, persp) => `<section class="pane leg rise" data-leg="${esc(l.transferId)}" aria-label="Tracking: ${esc(l.drug?.name)}">
   <div class="lt-head"><div class="lt-eta" role="status" aria-live="polite"></div><div class="lt-flags"></div></div>
   <div class="lt-banner"></div>
   <div class="lt-steps"></div>
@@ -682,10 +681,14 @@ function mountLeg(root, leg, persp, reload) {
   function paint() {
     const l = cur, text = String(l.etaText || ''), [big, at] = text.split(' · '), arrived = /^arriv/i.test(text);
     const sub = [at && !arrived ? `at ${at}` : '', l.remainingKm != null ? `${Number(l.remainingKm).toFixed(1)} km to go` : ''].filter(Boolean).join(' · ');
-    q('.lt-eta').innerHTML = text
+    const step = k => l.steps?.find(s => s.key === k);
+    const waiting = step('arrived')?.done && !step('delivered')?.done; // at the door: no countdown, say who has to act
+    q('.lt-eta').innerHTML = waiting
+      ? `<p class="eyebrow">Status</p><p class="eta">Arrived</p><p class="eta-sub">${persp === 'receiver' ? 'The courier is at your pharmacy. Receive it to finish.' : `At ${esc(l.destination?.name || 'the receiving pharmacy')}, waiting to be received.`}</p>`
+      : text
       ? `<p class="eyebrow">${arrived ? 'Status' : 'Arriving in'}</p><p class="eta">${esc(arrived ? text : big)}</p>${sub ? `<p class="eta-sub">${esc(sub)}</p>` : ''}`
       : `<p class="eyebrow">Status</p><p class="eta">${esc(l.steps?.find(s => !s.done)?.label || 'Courier assigned')}</p>`;
-    q('.lt-flags').innerHTML = `${l.delayed ? statusChip('amber', 'Running late') : ''}${LIVE_NOTE}`;
+    q('.lt-flags').innerHTML = l.delayed ? statusChip('amber', 'Running late') : '';
     q('.lt-banner').innerHTML = l.excursion ? `<div class="capbar t-rose" role="alert"><span class="capbar-cap">${vz(() => glyph('alert'))}Temperature</span><div class="capbar-b"><b>Temperature went out of range on the way.</b><p>${persp === 'supplier' ? 'The receiving pharmacy will check it on arrival.' : "When it arrives, set it aside (quarantine) and don't use it until it has been checked."}</p></div></div>` : '';
     q('.lt-steps').innerHTML = stepper(l.steps);
     const tel = persp !== 'supplier' && l.riderPhone ? String(l.riderPhone).replace(/[^\d+]/g, '') : '';
@@ -832,7 +835,7 @@ const auditWord = a => AUDIT_WORD[a] || (a.charAt(0) + a.slice(1).toLowerCase())
 const agoText = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 
 function adminLine(o) {
-  const kh = o.kpis.hospitals, live = `${cap1(words(kh.live))} of ${words(kh.total)} hospitals are live`;
+  const kh = o.kpis.hospitals, live = `${cap1(words(kh.live))} of ${words(kh.total)} hospitals are up to date`;
   const names = new Map(o.cover.drugs.map(d => [d.id, d.name])), byDrug = new Map();
   for (const c of o.cover.cells) if (c.status === 'short') byDrug.set(c.drugId, (byDrug.get(c.drugId) || 0) + 1);
   if (!byDrug.size) return `${live}, and every booked dose is covered.`;
@@ -865,7 +868,7 @@ async function viewOverview(quiet) {
   appShell('#/home', `
     ${hello(`Administrator / Bengaluru / updated ${timeIN(o.generatedAt)}`, 'Network overview', adminLine(o))}
     <div class="bento">
-      ${tile({ kind: 'hospital', label: 'Hospitals live', value: kh.live, of: kh.total, tone: kh.live === kh.total ? 'mint' : 'sun', sub: [kh.stale && `${kh.stale} out of date`, kh.offline && `${kh.offline} offline`].filter(Boolean).join(' · ') || 'Every feed is up to date' })}
+      ${tile({ kind: 'hospital', label: 'Feeds up to date', value: kh.live, of: kh.total, tone: kh.live === kh.total ? 'mint' : 'sun', sub: [kh.stale && `${kh.stale} out of date`, kh.offline && `${kh.offline} offline`].filter(Boolean).join(' · ') || 'Every feed is up to date' })}
       ${tile({ kind: 'covered', label: 'Units in stock', value: k.units, tone: 'sky', sub: `Usable, all hospitals · ${k.loans.open} open loan${k.loans.open === 1 ? '' : 's'}` })}
       ${tile({ kind: 'short', label: 'Medicines short', value: k.shortMedicines, tone: 'rose', zeroOk: true, sub: `Somewhere, next ${o.cover.windowDays} days` })}
       ${tile({ kind: 'alert', label: 'Open alerts', value: k.alerts.open, tone: k.alerts.urgent ? 'rose' : 'sun', zeroOk: true, sub: k.alerts.urgent ? `${k.alerts.urgent} urgent` : 'None urgent' })}
@@ -875,7 +878,7 @@ async function viewOverview(quiet) {
       ${pane('ex-h', 'Expiry outlook', '<div id="ch-expiry"></div>', { label: 'Units by days left', cls: 's6' })}
       ${pane('al-h', 'Alerts by type', o.alerts.length ? '<div id="ch-alerts" class="cbars"></div>' : emptyState('No open alerts.'), { label: `${k.alerts.open} open / ${k.alerts.urgent} urgent`, cls: 's6' })}
       ${pane('cc-h', 'Cold chain', o.coldChain.length ? o.coldChain.map((s, i) => `<div class="cc"><div class="cc-h"><b>${esc(s.drug)}</b><span class="muted">${esc(s.from)} → ${esc(s.to)}</span>${statusChip(s.excursion ? 'red' : 'green', s.excursion ? 'Went out of range' : 'In range')}</div><div class="cc-trace" id="cc-${i}"></div></div>`).join('') : emptyState('Nothing on the road. Temperature traces appear here while medicine moves.'), { label: 'Temperature on the road', cls: 's7' })}
-      ${pane('dl-h', 'Deliveries', h.journeys.length ? `<div class="orders one">${h.journeys.map(orderCard).join('')}</div>` : emptyState('Nothing on the move. Transfers between hospitals show up here.'), { label: 'Between hospitals', right: LIVE_NOTE, cls: 's5' })}
+      ${pane('dl-h', 'Deliveries', h.journeys.length ? `<div class="orders one">${h.journeys.map(orderCard).join('')}</div>` : emptyState('Nothing on the move. Transfers between hospitals show up here.'), { label: 'Between hospitals', cls: 's5' })}
       ${pane('mt-h', 'Success targets', `<div class="bullets">${m.metrics.map((x, i) => `<div class="bul" data-bu="${i}"></div>`).join('')}</div>`, { label: 'Synthetic data', cls: 's7' })}
       ${pane('sy-h', 'System', integrationsChips(hi), { label: hi.summary, cls: 's5' })}
       ${pane('ac-h', 'Recent activity', activityList(o.activity), { label: 'Audit trail', cls: 's12' })}
