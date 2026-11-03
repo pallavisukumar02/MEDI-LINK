@@ -627,3 +627,28 @@ body.route-courier{background:#F4F4F6}
   .stepper li:nth-child(3n)::after{display:none}
   .linkbox{flex-direction:column;align-items:stretch}
 }
+
+/* ---------------------------------------------------------------- agentic AI: assistant, plan review, suggestions */
+.ask{display:flex;gap:10px;align-items:center}
+.ask .input{flex:1}
+.ask-ex{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.ans{border-radius:16px;padding:14px 16px;background:color-mix(in srgb,var(--tone) 22%,white);box-shadow:0 0 0 1px var(--hair);display:grid;gap:6px}
+.aitag{display:inline-block;font:500 10px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;background:var(--violet);color:var(--ink);border-radius:999px;padding:4px 8px;margin-right:8px;vertical-align:2px}
+.aibtn::before{content:"✦ "}
+.aireport{margin:6px 0 2px;font-size:13px}
+.aireport summary{cursor:pointer;color:var(--ink)}
+.aireport p{margin:6px 0 0;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.7);box-shadow:0 0 0 1px var(--hair)}
+.rvlist{list-style:none;margin:12px 0;padding:0;display:grid;gap:8px;max-height:46vh;overflow:auto}
+.rvp{display:grid;gap:3px;padding:10px 12px;border-radius:14px;box-shadow:0 0 0 1px var(--hair-strong);background:rgba(255,255,255,.7)}
+.rvp.best{box-shadow:0 0 0 2px var(--mint-d);background:color-mix(in srgb,var(--mint) 20%,white)}
+.rvp.bad{opacity:.7;background:color-mix(in srgb,var(--rose) 15%,white)}
+.rvp small{font-size:12px;color:var(--body)}
+.rvp small.warn{color:var(--sun-d)}
+/* price vs distance detail */
+.pd-detail{display:grid;gap:10px;padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.7);box-shadow:0 0 0 1px var(--hair);margin-top:12px}
+.pd-detail small{display:block;color:var(--body);margin-top:4px}
+.pd-break{width:100%;border-collapse:collapse;font:13px var(--f-mono)}
+.pd-break td{padding:5px 0;border-bottom:1px solid var(--hair);color:var(--body)}
+.pd-break td:last-child{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+.pd-break tr.tot td{border-bottom:0;font-weight:600;color:var(--ink)}
+.pd-note{margin-top:10px;font-size:12px}

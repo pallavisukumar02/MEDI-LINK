@@ -90,11 +90,12 @@ async function onboarding(viewer) {
 function taskOf(j, viewer) {
   const primary = j.actions.find(a => a.style === 'primary');
   if (!primary) return null;
-  const secondary = j.actions.find(a => a !== primary && a.style === 'secondary' && a.id !== 'report-road-closed') || null;
+  const secondary = j.actions.find(a => a !== primary && a.style === 'secondary' && !['report-road-closed', 'review-plans'].includes(a.id)) || null;
+  const agentAction = j.actions.find(a => a.id === 'review-plans') || null; // "Check with AI": planner + compliance + critic
   const p = { qty: j.qty, drug: j.drug.name, other: j.counterpart, date: journey.fmtDate(j.neededBy) };
   const card = (kind, urgency, dueBy, extra = {}) => ({
     id: `${j.id}:${kind}`, kind, journeyId: j.id, title: t(`task.${kind}.title`, { ...p, ...extra }), subtitle: t(extra.subtitleKey || `task.${kind}.subtitle`, { ...p, ...extra }),
-    urgency, dueBy: dueBy || null, colour: j.colour, primaryAction: primary, secondaryAction: secondary,
+    urgency, dueBy: dueBy || null, colour: j.colour, primaryAction: primary, secondaryAction: secondary, ...(agentAction ? { agentAction } : {}),
   });
   const soon = j.neededBy && daysUntil(j.neededBy) <= 3 ? 'high' : 'medium';
   switch (j.key) {
@@ -155,6 +156,20 @@ function coverSummary(board, windowDays) {
   return { ...c, windowDays, drugs, text: t('cover.summary', c), emptyText: c.red === 0 ? t('empty.cover', { days: windowDays }) : null };
 }
 
+// ---------------------------------------------------------------- agent proposals (srv/lib/agents): a person approves each one
+async function agentTasks(viewer) {
+  const { action } = require('./actions');
+  const list = await require('./agents/proposals').pending(viewer.hospitalId);
+  const ids = list.map(p => p.ref).filter(Boolean);
+  const reqOf = ids.length ? Object.fromEntries((await SELECT.from('medilink.Transfers').columns('ID', 'request_ID').where({ ID: { in: ids } })).map(x => [x.ID, x.request_ID])) : {};
+  return list.map(p => ({
+    id: `agent:${p.ID}`, kind: 'agent_proposal', agent: p.agent, proposalKind: p.kind, journeyId: reqOf[p.ref] || null,
+    title: p.title, subtitle: p.detail, report: p.report || null, urgency: 'high', dueBy: null, colour: p.kind === 'HOLD_FOR_QA' ? 'red' : 'amber',
+    primaryAction: action('approve-proposal', { body: { proposalId: p.ID }, confirm: true }),
+    secondaryAction: action('reject-proposal', { style: 'secondary', body: { proposalId: p.ID } }),
+  }));
+}
+
 // ---------------------------------------------------------------- home
 async function home(viewer) {
   const res = { user: { id: viewer.userId, role: viewer.role }, greeting: t(`home.greeting.${viewer.role}`) || '', hospital: null, onboarding: null, alerts: [], tasks: [], journeys: [], coverSummary: null, empty: {} };
@@ -198,6 +213,7 @@ async function home(viewer) {
     const card = taskOf(j, viewer);
     if (card) res.tasks.push(card);
   }
+  if (viewer.hospitalId && ['pharmacist', 'approver'].includes(viewer.role)) res.tasks.push(...await agentTasks(viewer));
   res.journeys = journeys;
   res.alerts.sort((a, b) => (a.severity === 'red' ? 0 : 1) - (b.severity === 'red' ? 0 : 1) || ALERT_ORDER[a.kind] - ALERT_ORDER[b.kind]);
   res.tasks.sort((a, b) => URGENCY[a.urgency] - URGENCY[b.urgency] || String(a.dueBy || '9').localeCompare(String(b.dueBy || '9')));

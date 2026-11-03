@@ -96,6 +96,7 @@ async function telemetry({ transfer, loggerId, lat, long, temperatureC, sealStat
     for (const h of [t.supplier_ID, t.receiver_ID]) await notify({ hospital: h, kind: 'EXCURSION', severity: 'HIGH', ref: t.ID, message: msg });
     await audit.log(actor, 'EXCURSION', { transfer: t.ID, temperatureC: temp, range: `${min}-${max}`, sealStatus, loggedAt });
     ws.emit('excursion', { transferId: t.ID, temperatureC: temp, range: `${min}-${max}`, message: msg, quarantineSuggested: true, hospitals: `${t.supplier_ID},${t.receiver_ID}` });
+    await require('./agents/watchtower').onExcursion(t.ID, { temperatureC: temp, range: `${min}-${max}`, sealBroken, at: loggedAt }); // proposes hold-for-QA + incident report; never throws
   }
   require('./tracking').afterFix(t, { lat, long, loggedAt, accuracyM: acc, temperatureC: temp }, prev, [min, max]);
   return { accepted: true, excursion, transferId: t.ID };
@@ -127,6 +128,7 @@ async function replan(id, actor = 'system') {
   await audit.log(actor, 'ROUTE_REPLANNED', { transfer: id, open: r.open, distanceKm: r.distanceKm, etaMin: r.etaMin, provider: r.provider, note });
   ws.emit('replan', { transferId: id, distanceKm: r.distanceKm, etaMin: r.etaMin, open: r.open, note });
   if (!r.open) await notify({ hospital: t.receiver_ID, kind: 'ROUTE', severity: 'HIGH', ref: id, message: note });
+  await require('./agents/watchtower').onReplan(id, { open: r.open, etaMin: r.etaMin, note }); // no open road / late: proposes options; never throws
   return { transferId: id, open: r.open, distanceKm: r.distanceKm, etaMin: r.etaMin, note, via: r.via };
 }
 

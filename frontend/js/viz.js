@@ -316,6 +316,78 @@ function tempTrace(el, s = {}) {
   return () => { ro.disconnect(); tipHide(); };
 }
 
+// ---------------------------------------------------------------- price vs distance (supplier choice)
+/** One dot per hospital that can lend (all 8 safety rules passed). x = road distance, y = price per vial with delivery.
+    Dot size = vials it can give; brown = standard stock, copper = near-expiry stock sold at a discount. A dashed line
+    joins the best trade-offs (nobody is both nearer and cheaper); reference lines: landed cost (the most anyone may
+    charge) and how far a courier can come before the needed-by day ends. Arrow keys move between dots, Enter picks. */
+function priceDistanceChart(el, data = {}, { onSelect, selected } = {}) {
+  const pts = (data.points || []).filter(p => Number.isFinite(Number(p.distanceKm)) && Number.isFinite(Number(p.costPerUnit)));
+  el.classList.add('vz-pd');
+  if (!pts.length) { el.innerHTML = '<p class="vz-none">No hospital can lend this right now.</p>'; return () => {}; }
+  const inr = v => '₹' + Math.round(Number(v)).toLocaleString('en-IN');
+  let idx = Math.max(0, pts.findIndex(p => p.hospitalId === selected));
+  const draw = () => {
+    const W = Math.max(280, el.clientWidth), H = W < 420 ? 230 : 280, P = { l: 64, r: 22, t: 18, b: 40 };
+    const maxKm = Math.max(...pts.map(p => p.distanceKm)) * 1.18 + 1;
+    const showUrg = data.urgencyKm && data.urgencyKm < maxKm;
+    const costs = pts.map(p => p.costPerUnit).concat(data.landedCost ? [data.landedCost] : []);
+    const lo = Math.min(...costs) * 0.97, hi = Math.max(...costs) * 1.03;
+    const X = km => P.l + (km / maxKm) * (W - P.l - P.r), Y = v => P.t + (1 - (v - lo) / Math.max(1, hi - lo)) * (H - P.t - P.b);
+    const maxQ = Math.max(...pts.map(p => p.qty), 1), R = q => 6 + 8 * Math.sqrt(q / maxQ);
+    const front = (data.paretoFrontier || []).map(id => pts.find(p => p.hospitalId === id)).filter(Boolean).sort((a, b) => a.distanceKm - b.distanceKm);
+    const curve = front.length > 1 ? front.map((p, i) => { const x = X(p.distanceKm), y = Y(p.costPerUnit); if (!i) return `M${x.toFixed(1)},${y.toFixed(1)}`; const q = front[i - 1], qx = X(q.distanceKm), mx = ((qx + x) / 2).toFixed(1); return `C${mx},${Y(q.costPerUnit).toFixed(1)} ${mx},${y.toFixed(1)} ${x.toFixed(1)},${y.toFixed(1)}`; }).join('') : '';
+    const kmStep = maxKm > 30 ? 10 : maxKm > 12 ? 5 : 2, kms = []; for (let k = 0; k <= maxKm; k += kmStep) kms.push(k);
+    const yTicks = [0, 1, 2, 3].map(i => lo + ((hi - lo) * (i + 0.5)) / 4);
+    const cheapest = [...pts].sort((a, b) => a.costPerUnit - b.costPerUnit)[0], fastest = [...pts].sort((a, b) => a.etaMin - b.etaMin)[0];
+    el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Price per vial against distance for ${pts.length} hospital${pts.length > 1 ? 's' : ''} that can lend. Cheapest ${esc(cheapest.hospitalName)} at ${esc(inr(cheapest.costPerUnit))} a vial, fastest ${esc(fastest.hospitalName)} in ${esc(fastest.etaMin)} minutes. Arrow keys move between hospitals, Enter picks one.">
+      ${kms.map(k => `<path class="vz-gl" d="M${X(k).toFixed(1)},${P.t}V${H - P.b}"/><text class="vz-ax" x="${X(k).toFixed(1)}" y="${H - P.b + 15}" text-anchor="middle">${k} km</text>`).join('')}
+      ${yTicks.map(v => `<path class="vz-gl" d="M${P.l},${Y(v).toFixed(1)}H${W - P.r}"/><text class="vz-ax" x="${P.l - 8}" y="${(Y(v) + 3.5).toFixed(1)}" text-anchor="end">${esc(inr(v))}</text>`).join('')}
+      <text class="vz-ax vz-axt" x="${W - P.r}" y="${H - 6}" text-anchor="end">Road distance →</text>
+      <text class="vz-ax vz-axt" x="${P.l}" y="${P.t - 6}">Price per vial, with delivery</text>
+      ${data.landedCost ? `<path class="vz-ref" d="M${P.l},${Y(data.landedCost).toFixed(1)}H${W - P.r}"/><text class="vz-reft" x="${W - P.r - 4}" y="${(Y(data.landedCost) - 5).toFixed(1)}" text-anchor="end">Landed cost ${esc(inr(data.landedCost))}</text>` : ''}
+      ${showUrg ? `<path class="vz-ref urg" d="M${X(data.urgencyKm).toFixed(1)},${P.t}V${H - P.b}"/><text class="vz-reft urg" x="${(X(data.urgencyKm) - 4).toFixed(1)}" y="${P.t + 10}" text-anchor="end">Arrives in time up to here</text>` : ''}
+      ${curve ? `<path class="vz-front" d="${curve}"/>` : ''}
+      ${pts.map((p, i) => `<g class="vz-pt${p.nearExpiry ? ' ne' : ''}${i === idx && selected ? ' on' : ''}" data-i="${i}" transform="translate(${X(p.distanceKm).toFixed(1)} ${Y(p.costPerUnit).toFixed(1)})">
+        <circle class="vz-halo" r="${(R(p.qty) + 5).toFixed(1)}"/><circle class="vz-dot" r="${R(p.qty).toFixed(1)}" fill="${p.nearExpiry ? '#9B6446' : '#3B2218'}"/>
+        <text class="vz-ptl" x="${(R(p.qty) + 6).toFixed(1)}" y="-2">${esc(p.hospitalName)}</text>${p.tags?.length ? `<text class="vz-ptt" x="${(R(p.qty) + 6).toFixed(1)}" y="11">${esc(p.tags.join(' · '))}</text>` : ''}</g>`).join('')}
+    </svg>
+    <div class="vz-pdlegend"><span class="vz-chip">Cheapest: ${esc(inr(cheapest.costPerUnit))} · ${esc(cheapest.hospitalName)}</span><span class="vz-chip">Fastest: ${esc(fastest.etaMin)} min · ${esc(fastest.hospitalName)}</span>
+      <span class="vz-key"><i class="k-std"></i>Standard stock</span><span class="vz-key"><i class="k-ne"></i>Near expiry, ${esc(data.nearExpiryDiscountPct ?? 10)}% off</span><span class="vz-key"><i class="k-fr"></i>Best trade-offs</span></div>`;
+    const svg = el.querySelector('svg');
+    const tip = (i, e) => {
+      idx = i; const p = pts[i], b = svg.getBoundingClientRect();
+      svg.querySelectorAll('.vz-pt').forEach(g => g.classList.toggle('hover', +g.dataset.i === i));
+      tipShow(svg, p.hospitalName, [
+        { value: `${p.distanceKm} km`, label: `about ${p.etaMin} min` },
+        { value: `${p.qty} vials`, label: p.pharma || '' },
+        { value: inr(p.medicineCost), label: `medicine (${inr(p.unitPrice)} a vial)`, tone: p.nearExpiry ? 'sun' : 'ink' },
+        { value: '+ ' + inr(p.deliveryCost), label: 'delivery' },
+        { value: '= ' + inr(p.totalCost), label: `${inr(p.costPerUnit)} a vial`, tone: 'mint' },
+      ], e || { clientX: b.left + X(p.distanceKm), clientY: b.top + Y(p.costPerUnit) });
+    };
+    const pick = i => { tipHide(); onSelect?.(pts[i]); };
+    svg.querySelectorAll('.vz-pt').forEach(g => {
+      const i = +g.dataset.i;
+      g.addEventListener('pointermove', e => tip(i, e));
+      g.addEventListener('pointerleave', () => { g.classList.remove('hover'); tipHide(); });
+      g.addEventListener('click', () => pick(i));
+    });
+    svg.addEventListener('focus', () => tip(idx));
+    svg.addEventListener('blur', () => { svg.querySelectorAll('.vz-pt').forEach(g => g.classList.remove('hover')); tipHide(); });
+    svg.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); return pick(idx); }
+      const j = { ArrowRight: idx + 1, ArrowDown: idx + 1, ArrowLeft: idx - 1, ArrowUp: idx - 1, Home: 0, End: pts.length - 1 }[e.key];
+      if (j == null) return; e.preventDefault(); tip(Math.max(0, Math.min(pts.length - 1, j)));
+    });
+  };
+  draw();
+  let lastW = el.clientWidth;
+  const ro = new ResizeObserver(() => { if (Math.abs(el.clientWidth - lastW) > 8) { lastW = el.clientWidth; draw(); } });
+  ro.observe(el);
+  return () => { ro.disconnect(); tipHide(); };
+}
+
 // ---------------------------------------------------------------- heartbeat: feed health as an ECG strip
 const FEED_WORD = { live: 'Up to date', stale: 'Out of date', offline: 'Offline' };
 function heartbeat(el, { feed = 'offline', lastSyncedAt } = {}) {

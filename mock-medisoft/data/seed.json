@@ -1,6 +1,6 @@
 {
   "_note": "SYNTHETIC demo data for the mock MediSoft HIS. Not real patients or stock.",
-  "anchor": "2026-11-01",
+  "anchor": "2026-11-03",
   "users": [
     {
       "username": "pharm.jayanagar",
@@ -29,7 +29,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "SOL24C112",
           "qty": 20,
-          "expiry": "2027-05-20",
+          "expiry": "2027-05-22",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-CARB-A"
@@ -43,7 +43,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "SOL24A031",
           "qty": 6,
-          "expiry": "2026-11-05",
+          "expiry": "2026-11-07",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-CARB-B"
@@ -57,7 +57,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "SOL24C113",
           "qty": 1,
-          "expiry": "2027-03-31",
+          "expiry": "2027-04-02",
           "storage": "AMBIENT",
           "sealed": false,
           "lotRef": "H1-CARB-C"
@@ -71,7 +71,7 @@
           "manufacturer": "Medora Labs (synthetic)",
           "batch": "CISP29C359",
           "qty": 4,
-          "expiry": "2027-05-09",
+          "expiry": "2027-05-11",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-CISP50-1"
@@ -85,7 +85,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "OXAL95F749",
           "qty": 7,
-          "expiry": "2027-09-24",
+          "expiry": "2027-09-26",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-OXAL100-1"
@@ -99,7 +99,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "PACL97A532",
           "qty": 10,
-          "expiry": "2027-03-05",
+          "expiry": "2027-03-07",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-PACL260-1"
@@ -113,7 +113,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "PACL76K134",
           "qty": 11,
-          "expiry": "2027-08-05",
+          "expiry": "2027-08-07",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-PACL260-2"
@@ -127,7 +127,7 @@
           "manufacturer": "Kaveri Pharma (synthetic)",
           "batch": "CYCL39J994",
           "qty": 7,
-          "expiry": "2027-05-24",
+          "expiry": "2027-05-26",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-CYCL500-1"
@@ -141,7 +141,7 @@
           "manufacturer": "Kaveri Pharma (synthetic)",
           "batch": "CYCL27E212",
           "qty": 8,
-          "expiry": "2027-07-03",
+          "expiry": "2027-07-05",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-CYCL500-2"
@@ -155,7 +155,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "5FU584J466",
           "qty": 8,
-          "expiry": "2027-02-21",
+          "expiry": "2027-02-23",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-5FU500-1"
@@ -169,7 +169,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "5FU534J401",
           "qty": 8,
-          "expiry": "2027-09-25",
+          "expiry": "2027-09-27",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-5FU500-2"
@@ -183,7 +183,7 @@
           "manufacturer": "Nandi Biologics (synthetic)",
           "batch": "RITU67K917",
           "qty": 7,
-          "expiry": "2027-04-08",
+          "expiry": "2027-04-10",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H1-RITU500-1"
@@ -197,7 +197,7 @@
           "manufacturer": "Nandi Biologics (synthetic)",
           "batch": "RITU14L184",
           "qty": 8,
-          "expiry": "2027-02-28",
+          "expiry": "2027-03-02",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H1-RITU500-2"
@@ -211,7 +211,7 @@
           "manufacturer": "Medora Labs (synthetic)",
           "batch": "GEMC24S997",
           "qty": 3,
-          "expiry": "2026-10-29",
+          "expiry": "2026-10-31",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H1-GEMC1G-X"
@@ -225,7 +225,7 @@
           "manufacturer": "Kaveri Pharma (synthetic)",
           "batch": "DOXO24S203",
           "qty": 3,
-          "expiry": "2027-05-20",
+          "expiry": "2027-05-22",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H1-DOXO50-X"
@@ -240,7 +240,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-01",
+          "date": "2026-11-03",
           "intent": "NEOADJUVANT"
         },
         {
@@ -251,7 +251,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-02",
+          "date": "2026-11-04",
           "intent": "PALLIATIVE"
         },
         {
@@ -262,7 +262,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "NEOADJUVANT"
         },
         {
@@ -273,7 +273,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-04",
+          "date": "2026-11-06",
           "intent": "ADJUVANT"
         },
         {
@@ -284,7 +284,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-05",
+          "date": "2026-11-07",
           "intent": "ADJUVANT"
         },
         {
@@ -295,7 +295,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-05",
+          "date": "2026-11-07",
           "intent": "CURATIVE"
         },
         {
@@ -306,7 +306,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-06",
+          "date": "2026-11-08",
           "intent": "NEOADJUVANT"
         },
         {
@@ -317,7 +317,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-06",
+          "date": "2026-11-08",
           "intent": "PALLIATIVE"
         },
         {
@@ -328,7 +328,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "CURATIVE"
         },
         {
@@ -339,7 +339,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "NEOADJUVANT"
         },
         {
@@ -350,7 +350,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "PALLIATIVE"
         },
         {
@@ -361,7 +361,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "PALLIATIVE"
         },
         {
@@ -372,7 +372,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-09",
+          "date": "2026-11-11",
           "intent": "NEOADJUVANT"
         },
         {
@@ -383,7 +383,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-09",
+          "date": "2026-11-11",
           "intent": "CURATIVE"
         },
         {
@@ -394,7 +394,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-10",
+          "date": "2026-11-12",
           "intent": "CURATIVE"
         },
         {
@@ -405,7 +405,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-10",
+          "date": "2026-11-12",
           "intent": "PALLIATIVE"
         },
         {
@@ -416,7 +416,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "CURATIVE"
         },
         {
@@ -427,7 +427,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "ADJUVANT"
         },
         {
@@ -438,7 +438,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-12",
+          "date": "2026-11-14",
           "intent": "CURATIVE"
         },
         {
@@ -449,7 +449,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-12",
+          "date": "2026-11-14",
           "intent": "PALLIATIVE"
         },
         {
@@ -460,7 +460,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "CURATIVE"
         },
         {
@@ -471,7 +471,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "NEOADJUVANT"
         },
         {
@@ -482,7 +482,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-14",
+          "date": "2026-11-16",
           "intent": "CURATIVE"
         },
         {
@@ -493,7 +493,7 @@
           "strength": "50 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "NEOADJUVANT"
         },
         {
@@ -504,7 +504,7 @@
           "strength": "50 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "CURATIVE"
         },
         {
@@ -515,7 +515,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-01",
+          "date": "2026-11-03",
           "intent": "ADJUVANT"
         },
         {
@@ -526,7 +526,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-06",
+          "date": "2026-11-08",
           "intent": "NEOADJUVANT"
         },
         {
@@ -537,7 +537,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "CURATIVE"
         },
         {
@@ -548,7 +548,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-02",
+          "date": "2026-11-04",
           "intent": "CURATIVE"
         },
         {
@@ -559,7 +559,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "CURATIVE"
         },
         {
@@ -570,7 +570,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "NEOADJUVANT"
         },
         {
@@ -581,7 +581,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "PALLIATIVE"
         },
         {
@@ -592,7 +592,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-09",
+          "date": "2026-11-11",
           "intent": "PALLIATIVE"
         },
         {
@@ -603,7 +603,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-12",
+          "date": "2026-11-14",
           "intent": "ADJUVANT"
         },
         {
@@ -614,7 +614,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "NEOADJUVANT"
         },
         {
@@ -625,7 +625,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-02",
+          "date": "2026-11-04",
           "intent": "ADJUVANT"
         },
         {
@@ -636,7 +636,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "PALLIATIVE"
         },
         {
@@ -647,7 +647,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "CURATIVE"
         },
         {
@@ -658,7 +658,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "CURATIVE"
         },
         {
@@ -669,7 +669,7 @@
           "strength": "500 mg/10 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-01",
+          "date": "2026-11-03",
           "intent": "CURATIVE"
         },
         {
@@ -680,7 +680,7 @@
           "strength": "500 mg/10 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "CURATIVE"
         },
         {
@@ -691,7 +691,7 @@
           "strength": "500 mg/10 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "CURATIVE"
         },
         {
@@ -702,7 +702,7 @@
           "strength": "500 mg/10 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "PALLIATIVE"
         },
         {
@@ -713,7 +713,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-02",
+          "date": "2026-11-04",
           "intent": "PALLIATIVE"
         },
         {
@@ -724,7 +724,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-05",
+          "date": "2026-11-07",
           "intent": "NEOADJUVANT"
         },
         {
@@ -735,7 +735,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-09",
+          "date": "2026-11-11",
           "intent": "CURATIVE"
         },
         {
@@ -746,7 +746,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "PALLIATIVE"
         },
         {
@@ -757,7 +757,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-14",
+          "date": "2026-11-16",
           "intent": "CURATIVE"
         }
       ]
@@ -775,7 +775,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "SOL24B077",
           "qty": 12,
-          "expiry": "2026-12-16",
+          "expiry": "2026-12-18",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-CARB-A"
@@ -789,7 +789,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "SOL25A015",
           "qty": 20,
-          "expiry": "2027-09-17",
+          "expiry": "2027-09-19",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-CARB-B"
@@ -803,7 +803,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "SOL25A019",
           "qty": 5,
-          "expiry": "2027-08-28",
+          "expiry": "2027-08-30",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H5-CARB-C"
@@ -817,7 +817,7 @@
           "manufacturer": "Medora Labs (synthetic)",
           "batch": "CISP26J396",
           "qty": 12,
-          "expiry": "2027-03-06",
+          "expiry": "2027-03-08",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-CISP50-1"
@@ -831,7 +831,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "OXAL19H558",
           "qty": 13,
-          "expiry": "2027-07-12",
+          "expiry": "2027-07-14",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-OXAL100-1"
@@ -845,7 +845,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "OXAL50K759",
           "qty": 14,
-          "expiry": "2027-06-30",
+          "expiry": "2027-07-02",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-OXAL100-2"
@@ -859,7 +859,7 @@
           "manufacturer": "Sunrise Oncology Ltd (synthetic)",
           "batch": "PACL15H652",
           "qty": 7,
-          "expiry": "2027-04-24",
+          "expiry": "2027-04-26",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-PACL260-1"
@@ -873,7 +873,7 @@
           "manufacturer": "Kaveri Pharma (synthetic)",
           "batch": "DOXO30B458",
           "qty": 7,
-          "expiry": "2027-07-23",
+          "expiry": "2027-07-25",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H5-DOXO50-1"
@@ -887,7 +887,7 @@
           "manufacturer": "Kaveri Pharma (synthetic)",
           "batch": "DOXO32E240",
           "qty": 8,
-          "expiry": "2027-10-19",
+          "expiry": "2027-10-21",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H5-DOXO50-2"
@@ -901,7 +901,7 @@
           "manufacturer": "Kaveri Pharma (synthetic)",
           "batch": "CYCL62J255",
           "qty": 7,
-          "expiry": "2027-07-21",
+          "expiry": "2027-07-23",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-CYCL500-1"
@@ -915,7 +915,7 @@
           "manufacturer": "Kaveri Pharma (synthetic)",
           "batch": "CYCL25G307",
           "qty": 8,
-          "expiry": "2027-10-14",
+          "expiry": "2027-10-16",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-CYCL500-2"
@@ -929,7 +929,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "5FU584K571",
           "qty": 5,
-          "expiry": "2027-10-05",
+          "expiry": "2027-10-07",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-5FU500-1"
@@ -943,7 +943,7 @@
           "manufacturer": "Medora Labs (synthetic)",
           "batch": "GEMC20J328",
           "qty": 7,
-          "expiry": "2027-10-20",
+          "expiry": "2027-10-22",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-GEMC1G-1"
@@ -957,7 +957,7 @@
           "manufacturer": "Medora Labs (synthetic)",
           "batch": "GEMC99J839",
           "qty": 7,
-          "expiry": "2027-10-13",
+          "expiry": "2027-10-15",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-GEMC1G-2"
@@ -971,7 +971,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "BORT37K199",
           "qty": 7,
-          "expiry": "2027-10-17",
+          "expiry": "2027-10-19",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-BORT2-1"
@@ -985,7 +985,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "BORT35A346",
           "qty": 8,
-          "expiry": "2027-02-09",
+          "expiry": "2027-02-11",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-BORT2-2"
@@ -999,7 +999,7 @@
           "manufacturer": "Nandi Biologics (synthetic)",
           "batch": "RITU81H901",
           "qty": 10,
-          "expiry": "2027-10-02",
+          "expiry": "2027-10-04",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H5-RITU500-1"
@@ -1013,7 +1013,7 @@
           "manufacturer": "Nandi Biologics (synthetic)",
           "batch": "NB24T019",
           "qty": 1,
-          "expiry": "2026-10-29",
+          "expiry": "2026-10-31",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H5-TRAS-X"
@@ -1027,7 +1027,7 @@
           "manufacturer": "Medora Labs (synthetic)",
           "batch": "GEMC24S085",
           "qty": 4,
-          "expiry": "2027-01-25",
+          "expiry": "2027-01-27",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-GEMC1G-X"
@@ -1041,7 +1041,7 @@
           "manufacturer": "Nandi Biologics (synthetic)",
           "batch": "RITU24S025",
           "qty": 2,
-          "expiry": "2026-11-26",
+          "expiry": "2026-11-28",
           "storage": "COLD",
           "sealed": true,
           "lotRef": "H5-RITU500-X"
@@ -1055,7 +1055,7 @@
           "manufacturer": "Deccan Biogenerics (synthetic)",
           "batch": "BORT24S005",
           "qty": 2,
-          "expiry": "2026-11-06",
+          "expiry": "2026-11-08",
           "storage": "AMBIENT",
           "sealed": true,
           "lotRef": "H5-BORT2-X"
@@ -1070,7 +1070,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "ADJUVANT"
         },
         {
@@ -1081,7 +1081,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-06",
+          "date": "2026-11-08",
           "intent": "ADJUVANT"
         },
         {
@@ -1092,7 +1092,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "PALLIATIVE"
         },
         {
@@ -1103,7 +1103,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "ADJUVANT"
         },
         {
@@ -1114,7 +1114,7 @@
           "strength": "450 mg/45 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "CURATIVE"
         },
         {
@@ -1125,7 +1125,7 @@
           "strength": "50 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "PALLIATIVE"
         },
         {
@@ -1136,7 +1136,7 @@
           "strength": "50 mg/50 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-04",
+          "date": "2026-11-06",
           "intent": "PALLIATIVE"
         },
         {
@@ -1147,7 +1147,7 @@
           "strength": "50 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-09",
+          "date": "2026-11-11",
           "intent": "ADJUVANT"
         },
         {
@@ -1158,7 +1158,7 @@
           "strength": "50 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1169,7 +1169,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-01",
+          "date": "2026-11-03",
           "intent": "PALLIATIVE"
         },
         {
@@ -1180,7 +1180,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1191,7 +1191,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-04",
+          "date": "2026-11-06",
           "intent": "ADJUVANT"
         },
         {
@@ -1202,7 +1202,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-06",
+          "date": "2026-11-08",
           "intent": "CURATIVE"
         },
         {
@@ -1213,7 +1213,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "CURATIVE"
         },
         {
@@ -1224,7 +1224,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1235,7 +1235,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-10",
+          "date": "2026-11-12",
           "intent": "CURATIVE"
         },
         {
@@ -1246,7 +1246,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1257,7 +1257,7 @@
           "strength": "100 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-14",
+          "date": "2026-11-16",
           "intent": "CURATIVE"
         },
         {
@@ -1268,7 +1268,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-06",
+          "date": "2026-11-08",
           "intent": "PALLIATIVE"
         },
         {
@@ -1279,7 +1279,7 @@
           "strength": "260 mg/43.4 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "CURATIVE"
         },
         {
@@ -1290,7 +1290,7 @@
           "strength": "50 mg/25 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "ADJUVANT"
         },
         {
@@ -1301,7 +1301,7 @@
           "strength": "50 mg/25 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-10",
+          "date": "2026-11-12",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1312,7 +1312,7 @@
           "strength": "50 mg/25 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "CURATIVE"
         },
         {
@@ -1323,7 +1323,7 @@
           "strength": "50 mg/25 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-14",
+          "date": "2026-11-16",
           "intent": "ADJUVANT"
         },
         {
@@ -1334,7 +1334,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-02",
+          "date": "2026-11-04",
           "intent": "CURATIVE"
         },
         {
@@ -1345,7 +1345,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "PALLIATIVE"
         },
         {
@@ -1356,7 +1356,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-04",
+          "date": "2026-11-06",
           "intent": "PALLIATIVE"
         },
         {
@@ -1367,7 +1367,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-06",
+          "date": "2026-11-08",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1378,7 +1378,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-08",
+          "date": "2026-11-10",
           "intent": "ADJUVANT"
         },
         {
@@ -1389,7 +1389,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-09",
+          "date": "2026-11-11",
           "intent": "CURATIVE"
         },
         {
@@ -1400,7 +1400,7 @@
           "strength": "500 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-10",
+          "date": "2026-11-12",
           "intent": "CURATIVE"
         },
         {
@@ -1411,7 +1411,7 @@
           "strength": "500 mg/10 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-01",
+          "date": "2026-11-03",
           "intent": "CURATIVE"
         },
         {
@@ -1422,7 +1422,7 @@
           "strength": "500 mg/10 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "CURATIVE"
         },
         {
@@ -1433,7 +1433,7 @@
           "strength": "1 g",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-05",
+          "date": "2026-11-07",
           "intent": "ADJUVANT"
         },
         {
@@ -1444,7 +1444,7 @@
           "strength": "1 g",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "CURATIVE"
         },
         {
@@ -1455,7 +1455,7 @@
           "strength": "1 g",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-10",
+          "date": "2026-11-12",
           "intent": "CURATIVE"
         },
         {
@@ -1466,7 +1466,7 @@
           "strength": "1 g",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1477,7 +1477,7 @@
           "strength": "2 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1488,7 +1488,7 @@
           "strength": "2 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "CURATIVE"
         },
         {
@@ -1499,7 +1499,7 @@
           "strength": "2 mg",
           "form": "Powder for injection",
           "units": 1,
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "intent": "PALLIATIVE"
         },
         {
@@ -1510,7 +1510,7 @@
           "strength": "2 mg",
           "form": "Powder for injection",
           "units": 2,
-          "date": "2026-11-14",
+          "date": "2026-11-16",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1521,7 +1521,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-03",
+          "date": "2026-11-05",
           "intent": "CURATIVE"
         },
         {
@@ -1532,7 +1532,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-07",
+          "date": "2026-11-09",
           "intent": "NEOADJUVANT"
         },
         {
@@ -1543,7 +1543,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 1,
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "intent": "ADJUVANT"
         },
         {
@@ -1554,7 +1554,7 @@
           "strength": "500 mg/50 mL",
           "form": "Injection",
           "units": 2,
-          "date": "2026-11-14",
+          "date": "2026-11-16",
           "intent": "ADJUVANT"
         }
       ]

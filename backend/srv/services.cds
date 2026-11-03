@@ -248,6 +248,8 @@ service RequestService {
   /** excludeRefused: skip suppliers that already declined, timed out or were rejected for this request ("Find a supplier again") */
   action rank(request : UUID, excludeRefused : Boolean) returns RankResult;
   action choosePlan(request : UUID, rank : Integer) returns array of TransferOut;
+  /** The pharmacist picks 1-3 suppliers from the price vs distance chart, in order; the 8 rules run again on live stock. */
+  action chooseSuppliers(request : UUID, hospitals : array of String) returns { transfers : array of TransferOut; totalQty : Integer; requested : Integer; names : array of String; };
   action cancelRequest(request : UUID) returns { request : UUID; status : String; };
 }
 
@@ -419,6 +421,8 @@ service TrackingService {
   event replan { transferId : UUID; distanceKm : Decimal(8, 2); etaMin : Integer; open : Boolean; note : String; }
   event status { transferId : UUID; status : String; message : String; }
   event alert { hospitalId : String; kind : String; severity : String; message : String; ref : String; notificationId : UUID; }
+  /** Supplier prices or distances for an open request changed (stock synced, re-ranked): GET /me/journeys/:id/prices again. */
+  event prices { requestId : UUID; hospitalId : String; }
   /** Same journey shape as GET /me/home -> journeys[], built for the receiving socket's point of view. */
   event journey.updated { journeyId : String; perspective : String; journey : Map; }
   /** On connect each socket joins its own contexts (hospital / role); clients cannot join others. */

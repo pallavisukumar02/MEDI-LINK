@@ -256,3 +256,28 @@
 .ml-rider .hd::before{content:"";position:absolute;left:-6px;top:-21px;border:6px solid transparent;border-bottom:9px solid #3B2218;border-top:0}
 .ml-rider .hd.none{display:none}
 .ml-rider .dot{position:absolute;inset:4px;border-radius:50%;background:#3B2218;border:3px solid #fff;box-shadow:0 2px 6px rgba(38,20,13,.45)}
+
+/* ---------------------------------------------------------------- price vs distance */
+.vz-pd svg{display:block;width:100%;outline:none;overflow:visible}
+.vz-pd svg:focus-visible{box-shadow:0 0 0 3px rgba(59,34,24,.25);border-radius:12px}
+.vz-pd .vz-axt{letter-spacing:.06em}
+.vz-pd .vz-ref{stroke:#2f9a68;stroke-width:1.3;stroke-dasharray:3 4;fill:none}
+.vz-pd .vz-ref.urg{stroke:#c9475f}
+.vz-pd .vz-reft{font:500 10.5px var(--f-mono);fill:#23784F}
+.vz-pd .vz-reft.urg{fill:#8A2D45}
+.vz-pd .vz-front{fill:none;stroke:#9B6446;stroke-width:2;stroke-dasharray:6 5;opacity:.75}
+.vz-pd .vz-pt{cursor:pointer}
+.vz-pd .vz-dot{stroke:#fff;stroke-width:2;transition:transform .15s}
+.vz-pd .vz-halo{fill:#F5D77E;opacity:0;transition:opacity .15s}
+.vz-pd .vz-pt.hover .vz-halo{opacity:.55}
+.vz-pd .vz-pt.on .vz-halo{opacity:.9;fill:#A9DFC1}
+.vz-pd .vz-ptl{font:500 11.5px var(--f-mono);fill:var(--ink)}
+.vz-pd .vz-ptt{font:500 9.5px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;fill:#9B6446}
+.vz-pdlegend{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:10px;font:12px var(--f-mono);color:var(--body)}
+.vz-pdlegend .vz-key{display:inline-flex;align-items:center;gap:6px}
+.vz-pdlegend .vz-key i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.vz-pdlegend .k-std{background:#3B2218}
+.vz-pdlegend .k-ne{background:#9B6446}
+.vz-pdlegend .k-fr{width:22px !important;height:0 !important;border-radius:0 !important;border-top:2px dashed #9B6446}
+@media (prefers-reduced-motion:reduce){.vz-pd .vz-dot,.vz-pd .vz-halo{transition:none}}
+.vz-pdlegend .vz-chip{display:inline-flex;align-items:center;cursor:default;background:rgba(255,255,255,.7)}

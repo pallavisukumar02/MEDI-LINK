@@ -1,3 +1,3 @@
 ID;batchNo;manufacturer;drug_ID;genericName;reason;source;date;active;synthetic
-f0000000-0000-4000-8000-000000000001;ZX24K07;Zenvix Pharma (synthetic);D-CARB450;Carboplatin;SPURIOUS;"Hand-made recall for demo (synthetic, modelled on CDSCO spurious-drug alerts)";2026-10-20;true;true
-f0000000-0000-4000-8000-000000000002;GZ23M118;Medora Labs (synthetic);D-GEMC1G;Gemcitabine;NSQ;Synthetic NSQ entry in CDSCO monthly alert format;2026-10-02;true;true
+f0000000-0000-4000-8000-000000000001;ZX24K07;Zenvix Pharma (synthetic);D-CARB450;Carboplatin;SPURIOUS;"Hand-made recall for demo (synthetic, modelled on CDSCO spurious-drug alerts)";2026-10-22;true;true
+f0000000-0000-4000-8000-000000000002;GZ23M118;Medora Labs (synthetic);D-GEMC1G;Gemcitabine;NSQ;Synthetic NSQ entry in CDSCO monthly alert format;2026-10-04;true;true

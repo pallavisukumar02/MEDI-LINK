@@ -51,6 +51,7 @@ entity Hospitals : managed {
       licenceCheckedAt : Timestamp; // onboarding step 1 done (licence looked up and valid)
       synthetic        : Boolean default true;
       itContact        : String(120); // IT team's email / phone given at onboarding (connector setup link)
+      pricingMultiplier : Decimal(4, 2) default 1.00; // price tier on Drug.unitCost (0.50-1.00: lent at cost or less, never above)
       lots             : Association to many Lots on lots.hospital = $self;
       bookings         : Association to many Bookings on bookings.hospital = $self;
 }
@@ -81,6 +82,7 @@ entity Lots : managed {
       sealed       : Boolean default true;
       quarantined  : Boolean default false;
       source       : String(20); // SEED | SAP_SANDBOX | MEDISOFT | CONNECTOR | SHEET | TRANSFER
+      unitPrice    : Decimal(10, 2); // optional batch price (INR); empty = Drug.unitCost x Hospital.pricingMultiplier
       lastSynced   : Timestamp;
 }
 
@@ -400,4 +402,38 @@ entity MaterialMappings {
       hospital_ID : String(10);
       brandName   : String(80);
       manufacturer: String(120);
+}
+
+// ---------- Agentic AI (agents propose, rules verify, humans approve) ----------
+/** One agent run: which agent, for whom, how many tool calls, LLM or rules-only, and what it concluded. */
+entity AgentRuns {
+  key ID          : UUID;
+      agent       : String(20);  // copilot | planner | watchtower | intake
+      hospital_ID : String(10);
+      actor       : String(120);
+      mode        : String(10);  // llm | rules
+      input       : String(1000);
+      output      : LargeString; // JSON
+      steps       : Integer;
+      createdAt   : Timestamp;
+}
+
+/** Something an agent wants done. Nothing happens until a person with the right role approves it. */
+entity AgentProposals {
+  key ID          : UUID;
+      agent       : String(20);
+      hospital_ID : String(10);
+      kind        : String(30);  // HOLD_FOR_QA | REROUTE_CHECK | BACKUP_CARRIER | LATE_DELIVERY
+      title       : String(200);
+      detail      : String(2000);
+      report      : String(2000); // drafted incident report, when there is one
+      actionId    : String(40);   // existing action run on approval (empty = record the decision only)
+      body        : String(1000); // JSON body for that action
+      ref         : String(80);   // transfer / request it is about
+      dedupeKey   : String(120);
+      status      : String(10) default 'PENDING'; // PENDING | APPROVED | REJECTED
+      createdAt   : Timestamp;
+      decidedBy   : String(120);
+      decidedAt   : Timestamp;
+      result      : String(1000);
 }

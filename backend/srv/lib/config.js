@@ -51,6 +51,12 @@ function load(env = process.env) {
     aicoreModel: str(env.AICORE_MODEL_NAME, ''),
     aicoreKeyPath: str(env.AICORE_SERVICE_KEY_PATH, './aicore-key.json'),
     trustFeedLlmEnabled: bool(env.TRUST_FEED_LLM_ENABLED, true),
+    // price vs distance (lib/pricing.js): synthetic delivery rates "CLASS:baseFee:perKm", INR
+    deliveryRates: str(env.DELIVERY_RATES, 'AMBIENT:150:12,COLD:350:22,FROZEN:500:30'),
+    nearExpiryDiscountPct: num(env.NEAR_EXPIRY_DISCOUNT_PCT, 10),
+    // agentic AI (srv/lib/agents): with the LLM off the agents run on their rules-only path
+    agentsEnabled: bool(env.AGENTS_ENABLED, true),
+    agentMaxSteps: num(env.AGENT_MAX_STEPS, 6),
     approvalMode: str(env.APPROVAL_MODE, 'cap').toLowerCase(), // cap (built-in) | bpa (SAP Build Process Automation)
     bpaApiUrl: str(env.BPA_API_URL, ''),
     bpaDefinitionId: str(env.BPA_DEFINITION_ID, ''),

@@ -378,8 +378,63 @@ function handleNext(r, after) {
       <div class="acts"><button class="btn small" value="ok">Done</button></div></form>`;
     dlg.showModal();
   } else if (n.type === 'action') {
-    setTimeout(() => openAction(n.action, after, previewTable(r.result?.rows || r.result?.preview)), 50);
+    setTimeout(() => openAction(n.action, after, previewTable(r.result?.rows || r.result?.preview) + rejectedList(r.result?.rejected) + (r.result?.question ? `<p class="m0 ink">${esc(r.result.question)}</p>` : '')), 50);
+  } else if (n.type === 'review') {
+    showReview(n.review, n.action, after);
   }
+}
+function rejectedList(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `<p class="muted m0">Not used: ${rows.map(x => `${esc(x.batchNo || x.line || 'a line')} (${esc(x.reason)})`).join('; ')}.</p>`;
+}
+
+/** Planner + compliance + critic agents: why this plan, what was checked, and the usual button to ask the supplier. */
+function showReview(rv, next, after) {
+  const dlg = $('#dlg');
+  const plan = p => `<li class="rvp${p.rank === rv.recommended ? ' best' : ''}${p.verified ? '' : ' bad'}">
+      <b>Plan ${esc(p.rank)}${p.rank === rv.recommended ? ' · recommended' : ''}</b>
+      <span>${esc(p.legs.map(l => `${l.qty} from ${l.hospital} (${l.distanceKm} km, ~${l.etaMin} min)`).join(' + '))}</span>
+      <small>${p.verified ? '✓ Passed all 8 safety rules again' : `✕ ${esc(p.failures.join('; '))}`}</small>
+      ${p.warnings.map(w => `<small class="warn">! ${esc(w.text)}</small>`).join('')}${(p.notes || []).map(w => `<small>${esc(w.text)}</small>`).join('')}</li>`;
+  dlg.innerHTML = `<form method="dialog"><p class="eyebrow">AI check · ${rv.mode === 'llm' ? 'AI model + MediLink rules' : 'MediLink rules'}</p>
+    <h2 id="dlg-title">Why this plan</h2><p class="m0 ink">${esc(rv.explanation)}</p>
+    <ul class="rvlist">${rv.plans.map(plan).join('')}</ul>
+    <p class="muted m0">The AI only suggests. Nothing is sent until you tap the button.</p>
+    <div class="acts"><button type="button" class="btn ghost small" id="rv-close">Close</button>${next ? `<button type="button" class="btn small" id="rv-go">${esc(next.label)}</button>` : ''}</div></form>`;
+  dlg.showModal();
+  $('#rv-close').addEventListener('click', () => dlg.close());
+  $('#rv-go')?.addEventListener('click', () => { dlg.close(); openAction(next, after); });
+}
+
+// ---------------------------------------------------------------- MediLink assistant (copilot agent, read-only)
+const ASK = { id: 'ask-copilot', method: 'POST', path: '/me/actions/ask-copilot', label: 'Ask' };
+const INTAKE = { id: 'intake-text', method: 'POST', path: '/me/actions/intake-text', label: 'Paste a stock list', style: 'secondary',
+  fields: [{ name: 'stockText', label: 'Paste your stock list (one line per batch)', type: 'text', required: true, hint: 'For example: Carboplatin 450 mg batch PH24A001 qty 18 exp 03/2027. MediLink checks every line; nothing is saved until you confirm.' }] };
+const COPILOT_EXAMPLES = ['Which drugs will run short in the next 10 days?', 'Which lots expire this month?', 'Who can lend carboplatin within 15 km?'];
+function copilotPane() {
+  return pane('ai-h', 'Ask MediLink', `<form class="ask" id="ask-form" autocomplete="off">
+      <input class="input" id="ask-q" name="question" maxlength="500" placeholder="Ask about your stock, expiry or deliveries" aria-label="Your question">
+      <button class="btn small" type="submit" id="ask-go">Ask</button></form>
+    <div class="ask-ex">${COPILOT_EXAMPLES.map(q => `<button type="button" class="fcap" data-ask="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <div id="ask-out" aria-live="polite"></div>`, { label: 'AI assistant / read-only', cls: 's12' });
+}
+function wireCopilot(root) {
+  const form = root.querySelector('#ask-form');
+  if (!form) return;
+  const out = root.querySelector('#ask-out'), q = root.querySelector('#ask-q'), go = root.querySelector('#ask-go');
+  const run = async question => {
+    if (!question.trim()) return q.focus();
+    go.disabled = true; go.setAttribute('aria-busy', 'true'); out.innerHTML = '<p class="muted">Checking your data…</p>';
+    try {
+      const r = (await api('POST', ASK.path, { question }, { 'Idempotency-Key': newKey() })).result;
+      const src = (r.sources || []).map(s => s.tool.replace(/_/g, ' ')).join(', ');
+      out.innerHTML = `<div class="ans t-${r.confidence === 'high' ? 'mint' : 'sun'}"><p class="m0 ink">${esc(r.answer)}</p>
+        <small class="muted">${r.confidence === 'high' ? 'Sure' : 'Not sure'} · ${r.mode === 'llm' ? 'AI model' : 'MediLink rules'}${src ? ` · from: ${esc(src)}` : ''}</small></div>`;
+    } catch (err) { out.innerHTML = errorCard(err, 'ask-retry'); wireRetry('ask-retry', err, () => run(question)); }
+    go.disabled = false; go.removeAttribute('aria-busy');
+  };
+  form.addEventListener('submit', e => { e.preventDefault(); run(q.value); });
+  root.querySelectorAll('[data-ask]').forEach(b => b.addEventListener('click', () => { q.value = b.dataset.ask; run(b.dataset.ask); }));
 }
 
 /** The courier link for one delivery (supplying hospital): copy it, or let the rider scan the QR code. */
@@ -406,8 +461,9 @@ function taskItem(t, i) {
   const details = t.journeyId && !t.journeyId.startsWith('shortfall:') ? `<a class="link" href="#/journey/${encodeURIComponent(t.journeyId)}">Details<span class="sr-only">: ${esc(t.title)}</span></a>` : '';
   return `<li class="task drop"><span class="badge" aria-hidden="true">${i + 1}</span><div class="task-b">
     <div class="task-top">${statusChip(t.colour, URGENCY_WORD[t.urgency] || 'To do')}${due ? `<span class="muted">${esc(due)}</span>` : ''}</div>
-    <b class="task-t">${esc(t.title)}</b><p class="task-p">${esc(t.subtitle)}</p>
-    <div class="acts">${actionBtn(t.primaryAction)}${actionBtn(t.secondaryAction)}${details}</div></div></li>`;
+    <b class="task-t">${t.kind === 'agent_proposal' ? '<span class="aitag">AI suggestion</span>' : ''}${esc(t.title)}</b><p class="task-p">${esc(t.subtitle)}</p>
+    ${t.report ? `<details class="aireport"><summary>Draft incident report</summary><p>${esc(t.report)}</p></details>` : ''}
+    <div class="acts">${actionBtn(t.primaryAction)}${actionBtn(t.secondaryAction)}${t.agentAction ? actionBtn(t.agentAction, 'aibtn') : ''}${details}</div></div></li>`;
 }
 /** A capsule: the left cap carries the severity tone and the word, the right half the message and actions. */
 function alertItem(a) {
@@ -514,6 +570,7 @@ async function viewHome(quiet) {
       ].join('') : ''}
       ${pane('alerts-h', 'Alerts', alerts.length ? alertStack(alerts, 'home-al') : emptyState(h.empty?.alerts || 'No alerts. All clear.'), { label: 'Stock / expiry / deliveries', right: countBadge(alerts.length), cls: 's5' })}
       ${pane('j-h', 'Requests & deliveries', h.journeys.length ? `<div class="orders">${h.journeys.map(orderCard).join('')}</div>` : emptyState(h.empty?.journeys || 'No medicine on the move for you right now.'), { label: 'Swap / lend / borrow', cls: 's7' })}
+      ${h.hospital ? copilotPane() : ''}
     </div>`, quiet);
   if (drugs.length) mount(() => capsuleRing($('#ring'), drugs, { windowDays: cs.windowDays, onSelect: x => {
     const d = typeof x === 'string' ? drugs.find(v => v.id === x) : x;
@@ -524,11 +581,12 @@ async function viewHome(quiet) {
   onCleanup(tilt($('#hero')));
   const main = $('#main');
   wireActions(main, () => viewHome(true));
-  wireMore(main); wireTrack(main);
+  wireMore(main); wireTrack(main); wireCopilot(main);
   main.querySelectorAll('[data-sf]').forEach(a => a.addEventListener('click', () => { stockFilter = a.dataset.sf; }));
   if (quiet) scrollTo(0, y);
   const refresh = async () => {
-    try { const fresh = await api('GET', '/me/home'); if (!$('#dlg').open && JSON.stringify(fresh) !== JSON.stringify(lastHome)) viewHome(true); } catch { /* keep the screen */ }
+    const typing = document.activeElement?.id === 'ask-q' || $('#ask-out')?.childElementCount;
+    try { const fresh = await api('GET', '/me/home'); if (!$('#dlg').open && !typing && JSON.stringify(fresh) !== JSON.stringify(lastHome)) viewHome(true); } catch { /* keep the screen */ }
   };
   poll(refresh);
   const soon = debounce(refresh);
@@ -591,10 +649,12 @@ async function viewJourney(id) {
   try { j = await api('GET', `/me/journeys/${encodeURIComponent(id)}`); } catch (err) { return viewError(err, '#/home'); }
   if (!lastHome) { try { lastHome = await api('GET', '/me/home'); } catch { /* chrome without status */ } }
   appShell('#/home', `<a class="back rise" href="#/home">${icon('arrowLeft')}Back to ${role() === 'admin' ? 'overview' : 'home'}</a>
-    <div class="bento"><div id="j-sum" class="s7"></div><div id="j-tl" class="s5"></div><div id="j-track" class="s12 legs"></div></div>`);
+    <div class="bento"><div id="j-sum" class="s7"></div><div id="j-tl" class="s5"></div><div id="j-prices" class="s12" hidden></div><div id="j-track" class="s12 legs"></div></div>`);
   $('#j-sum').style.viewTransitionName = 'hero'; // the delivery card that was clicked morphs into this pane
   const track = trackingSection($('#j-track'), j.id);
   onCleanup(() => track.destroy());
+  const prices = pricesSection($('#j-prices'), j.id, r => (r?.journey ? paint(r.journey) : refresh()));
+  onCleanup(() => prices.destroy());
   const after = r => (r?.journey ? paint(r.journey) : refresh());
   let first = true;
   function paint(next) {
@@ -608,6 +668,7 @@ async function viewJourney(id) {
     wireActions($('#j-sum'), after);
     if (focused) [...$('#j-sum').querySelectorAll('button, a')].find(b => b.textContent === focused)?.focus();
     track.sync(j);
+    prices.sync(j);
     if (j.stage >= 6) { // arrived or done: celebrate once per journey
       let seen = true; try { seen = !!sessionStorage.getItem('medilink.cf.' + j.id); sessionStorage.setItem('medilink.cf.' + j.id, '1'); } catch { /* private mode */ }
       if (!seen) confetti($('#j-sum').getBoundingClientRect());
@@ -623,7 +684,92 @@ async function viewJourney(id) {
     if (event === 'journey.updated' && data.journey?.id === j.id) { if (JSON.stringify(data.journey) !== JSON.stringify(j)) paint(data.journey); track.reload(); }
     else if (event === 'tracking') track.live(data);
     else if (['excursion', 'replan', 'status'].includes(event) && track.has(data.transferId)) track.reload();
+    else if (event === 'prices' && data.requestId === j.id) prices.reload(); // stock synced or re-ranked
   });
+}
+
+/** Price vs distance while the pharmacist chooses a supplier: only hospitals that pass the 8 safety rules.
+    Tap a dot for its cost breakdown and "Ask <hospital>". If it cannot give every vial, "Add another hospital" lets the
+    pharmacist tap a second (and third) dot for the rest: the basket shows who gives how many and the combined price.
+    The server runs the 8 rules again on live stock when the request is sent (choose-suppliers). */
+const PRICE_STAGES = new Set(['choose_supplier', 'finding']);
+function pricesSection(el, journeyId, after) {
+  let on = false, data = null, focus = null, picks = [], adding = false, stopChart = null, loading = false;
+  const inr = v => '₹' + Math.round(Number(v)).toLocaleString('en-IN');
+  const byId = id => data.points.find(p => p.hospitalId === id);
+  /** What hospital p gives when `need` vials are still missing: its batches in expiry order, priced per batch. */
+  const share = (p, need) => {
+    let left = Math.min(need, p.qty), medicine = 0; const batches = [];
+    for (const b of p.batches) { if (left <= 0) break; const q = Math.min(b.qty, left); medicine += q * b.unitPrice; left -= q; batches.push({ ...b, qty: q }); }
+    const qty = batches.reduce((s, b) => s + b.qty, 0);
+    return { p, qty, medicine, delivery: qty ? p.deliveryCost : 0, batches };
+  };
+  const basket = () => { let need = data.qty; return picks.map(id => { const s = share(byId(id), need); need -= s.qty; return s; }); };
+  const names = xs => xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0];
+  const breakdown = rows => {
+    const qty = rows.reduce((s, r) => s + r.qty, 0), total = rows.reduce((s, r) => s + r.medicine + r.delivery, 0);
+    return `<table class="pd-break">${rows.map(r => `<tr><td>${esc(r.p.hospitalName)}</td><td>${esc(r.qty)} × ${esc(inr(r.qty ? r.medicine / r.qty : 0))} + ${esc(inr(r.delivery))} delivery</td><td>${esc(inr(r.medicine + r.delivery))}</td></tr>`).join('')}
+      <tr class="tot"><td>Total</td><td>${esc(qty)} of ${esc(data.qty)} vials · ${esc(inr(qty ? total / qty : 0))} a vial</td><td>${esc(inr(total))}</td></tr></table>`;
+  };
+  function panel() {
+    if (picks.length) { // the basket: one or more hospitals chosen in order
+      const rows = basket(), got = rows.reduce((s, r) => s + r.qty, 0), missing = data.qty - got;
+      const ask = data.canChoose && rows.every(r => r.p.action) ? { ...rows[0].p.action, id: 'choose-suppliers', label: `Ask ${names(rows.map(r => r.p.hospitalName))}`,
+        body: { requestId: data.requestId, hospitals: picks.join(',') },
+        confirm: `Ask ${rows.map(r => `${r.p.hospitalName} for ${r.qty}`).join(' and ')} vial${got === 1 ? '' : 's'}?${missing > 0 ? ` That covers ${got} of ${data.qty}.` : ''}` } : null;
+      const canAdd = missing > 0 && picks.length < (data.maxSuppliers || 3) && data.points.some(p => !picks.includes(p.hospitalId));
+      return `<div class="pd-detail"><div><b>Your choice</b>${picks.length > 1 ? ' <span class="aitag">Split order</span>' : ''}
+          <small>${adding ? `Tap another hospital on the chart for the remaining ${esc(missing)} vial${missing === 1 ? '' : 's'}.` : missing > 0 ? `${esc(missing)} vial${missing === 1 ? '' : 's'} still missing.` : 'All vials covered.'}</small></div>
+        ${breakdown(rows)}
+        <div class="acts">${ask ? actionBtn(ask) : ''}${canAdd && !adding ? `<button type="button" class="btn ghost small" id="pd-add">Add another hospital for the remaining ${esc(missing)}</button>` : ''}<button type="button" class="link" id="pd-clear">Start again</button></div></div>`;
+    }
+    const p = focus;
+    if (!p) return '<p class="muted m0">Tap a dot (or focus the chart and use the arrow keys, then Enter) to see what that hospital would cost and to ask it.</p>';
+    const s = share(p, data.qty);
+    return `<div class="pd-detail"><div><b>${esc(p.hospitalName)}</b>${p.tags.length ? ` <span class="aitag">${esc(p.tags.join(' · '))}</span>` : ''}
+        <small>${esc(p.distanceKm)} km · about ${esc(p.etaMin)} min · can give ${esc(p.qty)} of ${esc(data.qty)} vials${p.pharma ? ` · ${esc(p.pharma)}` : ''}</small></div>
+      ${breakdown([s])}
+      <p class="muted m0">${p.batches.map(b => `Batch ${esc(b.batchNo)} × ${esc(b.qty)}${b.nearExpiry ? ' (near expiry, discounted)' : ''}`).join(' · ')}</p>
+      <div class="acts">${p.action ? actionBtn(p.action) : ''}${data.canChoose && p.qty < data.qty ? `<button type="button" class="btn ghost small" id="pd-split">Ask ${esc(p.hospitalName)} + another hospital for the rest</button>` : ''}</div></div>`;
+  }
+  function paintPanel() {
+    const box = el.querySelector('#pd-detail'); if (!box) return;
+    box.innerHTML = panel();
+    wireActions(box, r => { picks = []; adding = false; focus = null; return after(r); });
+    box.querySelector('#pd-split')?.addEventListener('click', () => { picks = [focus.hospitalId]; adding = true; paintPanel(); });
+    box.querySelector('#pd-add')?.addEventListener('click', () => { adding = true; paintPanel(); });
+    box.querySelector('#pd-clear')?.addEventListener('click', () => { picks = []; adding = false; paintPanel(); });
+    el.querySelectorAll('.vz-pt').forEach(g => { const id = data.points[+g.dataset.i]?.hospitalId; g.classList.toggle('on', picks.includes(id) || (!picks.length && focus?.hospitalId === id)); });
+  }
+  function select(p) {
+    if (adding && picks.length && !picks.includes(p.hospitalId)) { picks.push(p.hospitalId); adding = false; }
+    else if (!adding) { picks = []; focus = p; }
+    paintPanel();
+  }
+  function render() {
+    stopChart?.(); stopChart = null;
+    if (!on || !data) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = pane('pd-h', 'Price vs distance', `<div id="pd-chart"></div><div id="pd-detail"></div>
+      <p class="muted m0 pd-note">Only hospitals that pass all 8 safety rules are shown${data.ruledOut ? ` (${data.ruledOut} batches ruled out)` : ''}, and the rules run again when you ask. You choose: the matcher's suggestion is only a suggestion. Prices are synthetic and never above the landed cost.</p>`,
+      { label: `Choose a supplier / live / ${data.drug.name} × ${data.qty}`, right: `<span class="muted">Updated ${esc(timeIN(data.asOf))}</span>` });
+    stopChart = priceDistanceChart(el.querySelector('#pd-chart'), data, { selected: picks[0] || focus?.hospitalId, onSelect: select });
+    paintPanel();
+  }
+  async function reload() {
+    if (!on || loading) return;
+    loading = true;
+    try {
+      data = await api('GET', `/me/journeys/${encodeURIComponent(journeyId)}/prices`);
+      focus = focus && byId(focus.hospitalId) || null;
+      picks = picks.filter(id => byId(id)); if (!picks.length) adding = false; // a hospital that dropped off the chart leaves the basket
+    } catch { data = null; } finally { loading = false; }
+    render();
+  }
+  return {
+    sync(j) { const want = PRICE_STAGES.has(j.key) && j.perspective !== 'supplier' && !String(j.id).startsWith('shortfall:'); if (want !== on) { on = want; if (on) reload(); else render(); } },
+    reload, destroy() { on = false; stopChart?.(); },
+  };
 }
 
 /** Live tracking cards for the legs the API returns (assigned, on the way, or delivered in the last 2 h).
@@ -774,7 +920,8 @@ async function viewStock(quiet) {
       ${pane('set-h', 'Settings', `<ul class="settings">
         ${n.alertEmail ? `<li><div><b>My alert email</b><small>${n.alertEmail.email ? `${esc(n.alertEmail.email)} · ` : ''}${esc(n.alertEmail.text)}</small></div>${actionBtn({ style: 'secondary', ...n.alertEmail.action })}</li>` : ''}
         ${['approver', 'admin'].includes(role()) ? `<li><div><b>Safety margin</b><small>${esc(MARGIN_ACTION.fields[0].hint)}</small></div>${actionBtn(MARGIN_ACTION)}</li>` : ''}
-        <li><div><b>Reorder levels</b><small>Set per medicine with the pencil. MediLink alerts you when stock falls to that level.</small></div></li></ul>`, { label: 'Alerts / approvals', cls: 's5' })}
+        <li><div><b>Reorder levels</b><small>Set per medicine with the pencil. MediLink alerts you when stock falls to that level.</small></div></li>
+        ${role() === 'pharmacist' ? `<li><div><b>Add stock from a message</b><small>Paste a stock list from a register, email or chat. The AI helper reads it, MediLink checks every line, you confirm.</small></div>${actionBtn(INTAKE)}</li>` : ''}</ul>`, { label: 'Alerts / approvals', cls: 's5' })}
     </div>`, quiet);
   shown.forEach((d, i) => {
     mount(() => vialGauge($(`[data-vg="${i}"]`), { onHand: d.onHand, threshold: d.threshold, status: d.status, max }));

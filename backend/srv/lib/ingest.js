@@ -82,7 +82,7 @@ async function ingestSnapshot(hospitalId, source, payload, { actor = 'system:' +
       ID: String(ref).startsWith(hospitalId + '-') ? String(ref) : `${hospitalId}-${ref}`,
       hospital_ID: hospitalId, drug_ID: drug.ID, brandName: it.brandName ?? it.brand ?? null, manufacturer: it.manufacturer ?? it.mfr ?? null,
       batchNo, quantity: qty, expiryDate: expiry, storageClass: storageOf(it.storageClass ?? it.storage, drug), sealed: parseBool(it.sealed ?? true),
-      source, lastSynced: now,
+      source, lastSynced: now, unitPrice: Number(it.unitPrice ?? it.price) > 0 ? Math.round(Number(it.unitPrice ?? it.price) * 100) / 100 : null, // optional batch price (INR)
     });
   }
 
