@@ -10,6 +10,7 @@ const coverdb = require('./coverdb');
 const sync = require('./sync');
 const { maxGivable, isUsable, toDay, daysBetween } = require('./cover');
 const { evaluateLot } = require('./rules');
+const pricing = require('./pricing');
 const LOG = cds.log('matching');
 
 async function licenceMap() {
@@ -52,7 +53,8 @@ async function evaluate(request, { excludeHospitals = [], now = new Date() } = {
     });
     if (result.eligible) {
       const dte = daysBetween(today, lot.expiryDate);
-      candidates.push({ lotId: lot.ID, hospitalId: supplier.ID, hospitalName: supplier.name, lat: Number(supplier.lat), long: Number(supplier.long), maxQty: result.maxQty, distanceKm: route.distanceKm, etaMin: route.etaMin, expiryDate: toDay(lot.expiryDate), daysToExpiry: dte, nearExpiry: dte <= config.nearExpiryDays, batchNo: lot.batchNo, brandName: lot.brandName });
+      candidates.push({ lotId: lot.ID, hospitalId: supplier.ID, hospitalName: supplier.name, lat: Number(supplier.lat), long: Number(supplier.long), maxQty: result.maxQty, distanceKm: route.distanceKm, etaMin: route.etaMin, expiryDate: toDay(lot.expiryDate), daysToExpiry: dte, nearExpiry: dte <= config.nearExpiryDays, batchNo: lot.batchNo, brandName: lot.brandName,
+        manufacturer: lot.manufacturer, storageClass: drugs[lot.drug_ID]?.storageClass, unitPrice: pricing.unitPrice({ lot, drug: drugs[lot.drug_ID], hospital: supplier, nearExpiry: dte <= config.nearExpiryDays }) }); // price is shown, never ranked on
     } else {
       for (const e of result.exclusions) exclusions.push(exclusion(lot, supplier, e));
     }
@@ -139,6 +141,7 @@ async function rankRequest(requestId, { excludeHospitals = [], qty, actor = 'sys
   const summary = {};
   for (const e of ev.exclusions) summary[e.code] = (summary[e.code] || 0) + 1;
   await audit.log(actor, 'RULES_APPLIED', { request: requestId, qty: need, eligibleLots: ev.candidates.length, excluded: ev.exclusions.map(e => ({ lot: e.lotId, rule: e.rule, code: e.code })), summary, engine: result.engine, plans: result.plans.length });
+  require('./ws').emit('prices', { requestId, hospitalId: request.hospital_ID }); // the price vs distance chart refreshes
   return { requestId, qty: need, neededBy: toDay(request.neededBy), engine: result.engine, eligible: ev.candidates.length, plans: result.plans, exclusions: ev.exclusions };
 }
 

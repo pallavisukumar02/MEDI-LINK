@@ -87,6 +87,69 @@ async function choosePlan(requestId, rank, actor) {
   return ts.map(t => toOut(t, `Sent to ${t.supplier_ID}; waiting for the supplying pharmacist`));
 }
 
+/**
+ * The requesting pharmacist picks the supplier(s) from the price vs distance chart instead of a matcher plan.
+ * hospitalIds in the order chosen: the first gives as much as it safely can, the next covers the rest, and so on.
+ * The 8 hard rules run again on live stock right now (matching.evaluate): a hospital that no longer passes is refused
+ * with the reason, nothing is sent. The choice becomes a plan (engine "pharmacist-choice") and goes through the same
+ * supplier accept -> approver sign-off path as any other plan.
+ */
+async function chooseSuppliers(requestId, hospitalIds, actor) {
+  const request = await SELECT.one.from('medilink.Requests').where({ ID: requestId });
+  if (!request) throw wfError(404, 'REQUEST_NOT_FOUND', requestId);
+  if (['CANCELLED', 'FULFILLED'].includes(request.status)) throw wfError(409, 'INVALID_STATUS', `Request is ${request.status}`);
+  const open = await SELECT.from(T).columns('ID').where({ request_ID: requestId, status: { in: ['PENDING_SUPPLIER', 'PENDING_APPROVAL', 'PENDING_SECOND_APPROVAL', 'APPROVED', 'ASSIGNED', 'IN_TRANSIT'] } });
+  if (open.length) throw wfError(409, 'PLAN_ALREADY_CHOSEN', 'This request already has an active transfer');
+  const ids = [...new Set((hospitalIds || []).map(String).filter(Boolean))];
+  if (!ids.length || ids.length > 3) throw wfError(400, 'CHOOSE_ONE_TO_THREE', 'Choose one to three hospitals');
+  const ev = await require('./matching').evaluate(request);
+  const { t } = require('./messages');
+  const name = id => String(ev.hospitals[id]?.name || id).split(',')[0];
+  const legs = [];
+  let left = Number(request.qty);
+  for (const hid of ids) {
+    const lots = ev.candidates.filter(c => c.hospitalId === hid).sort((a, b) => a.daysToExpiry - b.daysToExpiry);
+    if (!lots.length) {
+      const ex = ev.exclusions.find(e => e.hospitalId === hid);
+      throw wfError(409, 'SUPPLIER_NOT_ELIGIBLE', `${name(hid)} cannot lend this right now (${ex ? t(`error.${ex.code}.title`).toLowerCase() : 'no stock to spare'}).`);
+    }
+    if (left <= 0) throw wfError(400, 'SUPPLIER_NOT_NEEDED', `The hospitals before ${name(hid)} already cover all ${request.qty} vials.`);
+    let cap = Math.min(left, Math.max(0, Number(ev.hospitalCaps[hid] ?? left)));
+    const take = [];
+    for (const c of lots) {
+      if (cap <= 0) break;
+      const q = Math.min(c.maxQty, cap); if (q <= 0) continue;
+      take.push({ lotId: c.lotId, batchNo: c.batchNo, brandName: c.brandName, qty: q, expiryDate: c.expiryDate, daysToExpiry: c.daysToExpiry, nearExpiry: c.nearExpiry });
+      cap -= q; left -= q;
+    }
+    if (!take.length) throw wfError(409, 'SUPPLIER_NOT_ELIGIBLE', `${name(hid)} cannot lend this right now (its spare stock is already promised).`);
+    legs.push({ hospitalId: hid, hospitalName: lots[0].hospitalName, distanceKm: lots[0].distanceKm, etaMin: lots[0].etaMin, qty: take.reduce((s, x) => s + x.qty, 0), lots: take });
+  }
+  const totalQty = legs.reduce((s, l) => s + l.qty, 0);
+  const pricing = require('./pricing');
+  const priced = legs.map(l => {
+    const lp = Object.fromEntries(ev.candidates.filter(c => c.hospitalId === l.hospitalId).map(c => [c.lotId, c.unitPrice]));
+    const m = pricing.medicineCost(l.lots.map(x => ({ qty: x.qty, unitPrice: lp[x.lotId] })));
+    return { hospital: l.hospitalId, qty: l.qty, distanceKm: l.distanceKm, medicine: m.medicine, delivery: pricing.deliveryCost(ev.requestDrug.storageClass, l.distanceKm) };
+  });
+  const last = await SELECT.one.from('medilink.Plans').columns('max(rank) as r').where({ request_ID: requestId });
+  const first = await SELECT.one.from('medilink.Plans').where({ request_ID: requestId, rank: 1 });
+  const matcherFirst = first ? JSON.parse(first.legs || '[]').map(l => l.hospitalId) : [];
+  const plan = {
+    ID: cds.utils.uuid(), request_ID: requestId, rank: Number(last?.r || 0) + 1, legs: JSON.stringify(legs), totalQty, transfers: legs.length,
+    score: legs.reduce((s, l) => s + Number(l.distanceKm), 0), engine: 'pharmacist-choice', createdAt: new Date().toISOString(),
+    reason: `Chosen by the pharmacist on price and distance: ${legs.map(l => `${l.qty} from ${name(l.hospitalId)} (${l.distanceKm} km)`).join(' + ')}${totalQty < request.qty ? `; covers ${totalQty} of ${request.qty}` : ''}.`,
+  };
+  await INSERT.into('medilink.Plans').entries(plan);
+  await audit.log(actor, 'SUPPLIERS_CHOSEN', {
+    request: requestId, hospitals: ids, qty: totalQty, requested: Number(request.qty), plan: plan.rank,
+    matcherFirst, sameAsMatcher: JSON.stringify(matcherFirst) === JSON.stringify(ids),
+    total: pricing.round2(priced.reduce((s, p) => s + p.medicine + p.delivery, 0)), legs: priced,
+  });
+  const ts = await createTransfersForPlan(request, plan, actor, { tag: 'PLAN_CHOSEN' });
+  return { transfers: ts.map(x => toOut(x, `Sent to ${x.supplier_ID}; waiting for the supplying pharmacist`)), totalQty, requested: Number(request.qty), names: legs.map(l => name(l.hospitalId)) };
+}
+
 /** Stock the supplier would have left for its own bookings after giving this transfer. */
 async function supplierReview(id) {
   const t = await load(id);
@@ -103,7 +166,7 @@ async function supplierReview(id) {
     lots: t.lots.map(l => { const x = lots.find(y => y.ID === l.lot_ID) || {}; const d = daysBetween(today, x.expiryDate); return { lotId: l.lot_ID, batchNo: l.batchNo, brandName: x.brandName, qty: l.qty, expiryDate: x.expiryDate, daysToExpiry: d, nearExpiry: d <= config.nearExpiryDays }; }),
     coverBefore: before.row, coverAfter: after.row,
     ownBookingsStayCovered: after.cover.shortfall === 0 && after.cover.usableStock - after.cover.booked >= after.cover.margin,
-    landedCostPerUnit: drug.unitCost,
+    landedCostPerUnit: require('./pricing').loanValue(drug, await SELECT.one.from('medilink.Hospitals').where({ ID: t.supplier_ID }), t.lots.map(l => ({ lot: lots.find(y => y.ID === l.lot_ID), qty: l.qty })), today).perUnit, // this supplier's price
   };
 }
 
@@ -144,7 +207,12 @@ async function supplierAccept(id, { qty, repaymentMode, repaysLoan }, actor) {
   await audit.log(actor, 'SUPPLIER_ACCEPTED', { transfer: id, qty: offered, repaymentMode, repaysLoan });
   if (!repaysLoan) {
     const drug = await SELECT.one.from('medilink.Drugs').where({ ID: t.drug_ID });
-    const loan = { ID: cds.utils.uuid(), lender_ID: t.supplier_ID, borrower_ID: t.receiver_ID, drug_ID: t.drug_ID, qty: offered, landedCost: Math.round(offered * Number(drug.unitCost || 0) * 100) / 100, repaymentMode, status: 'OPEN', transfer_ID: id };
+    // loan value at the supplier's price (lib/pricing.js: its price tier, near-expiry discount, never above the landed cost)
+    const tl = await SELECT.from('medilink.TransferLots').where({ transfer_ID: id });
+    const stock = await SELECT.from('medilink.Lots').where({ ID: { in: tl.map(l => l.lot_ID) } });
+    const supplier = await SELECT.one.from('medilink.Hospitals').where({ ID: t.supplier_ID });
+    const value = require('./pricing').loanValue(drug, supplier, tl.map(l => ({ lot: stock.find(x => x.ID === l.lot_ID), qty: l.qty })), new Date().toISOString().slice(0, 10));
+    const loan = { ID: cds.utils.uuid(), lender_ID: t.supplier_ID, borrower_ID: t.receiver_ID, drug_ID: t.drug_ID, qty: offered, landedCost: value.medicine, repaymentMode, status: 'OPEN', transfer_ID: id };
     await INSERT.into('medilink.Ledger').entries(loan);
     await audit.log(actor, 'LEDGER_LOAN_RECORDED', { loan: loan.ID, transfer: id, lender: loan.lender_ID, borrower: loan.borrower_ID, qty: offered, landedCost: loan.landedCost, repaymentMode });
   }
@@ -278,4 +346,4 @@ async function startBpa(t) {
   t.workflowInstanceId = res.json.id;
 }
 
-module.exports = { choosePlan, supplierReview, supplierAccept, supplierDecline, fallback, timeoutSweep, approve, reject, cancelRequest, bpaContext, riskReasons, toOut, load, wfError };
+module.exports = { choosePlan, chooseSuppliers, supplierReview, supplierAccept, supplierDecline, fallback, timeoutSweep, approve, reject, cancelRequest, bpaContext, riskReasons, toOut, load, wfError };

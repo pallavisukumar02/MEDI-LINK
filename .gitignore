@@ -1,6 +1,7 @@
 # Secrets and local config (never commit)
 .env
 *.env
+.env.*
 !.env.example
 aicore-key.json
 .cdsrc-private.json
@@ -37,3 +38,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Personal notes kept next to the code (e.g. HANDOVER.local.md)
+*.local.md

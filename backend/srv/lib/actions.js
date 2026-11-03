@@ -57,6 +57,7 @@ function forJourney(j, { r, lead, legs, viewer, ctx }) {
       });
       const fields = options.length > 1 ? [field('plan', 'choice', { default: 1, options })] : [];
       out.push(action('choose-plan', { body: { requestId: r.ID, plan: 1 }, params: { ...p, qty: plans[0]?.totalQty ?? j.qty }, confirm: true, fields }));
+      if (plans.length && require('./config').agentsEnabled) out.push(action('review-plans', { style: 'secondary', body: { requestId: r.ID } })); // planner + compliance + critic agents
     }
     if (['no_match', 'recalled'].includes(j.key)) out.push(action('find-supplier-again', { body: { requestId: r.ID } }));
     if (j.stage <= 4 && !['cancelled'].includes(j.key)) out.push(action('cancel-request', { style: 'secondary', body: { requestId: r.ID }, confirm: true }));
@@ -69,7 +70,8 @@ function forJourney(j, { r, lead, legs, viewer, ctx }) {
   }
   if (j.perspective === 'supplier' && lead) {
     if (lead.status === 'PENDING_SUPPLIER' && role === 'pharmacist') {
-      const amount = Math.round(Number(ctx.drugs[lead.drug_ID]?.unitCost || 0) * lead.qty);
+      const items = (ctx.lots[tid] || []).map(l => ({ lot: ctx.stockLots?.[l.lot_ID], qty: l.qty }));
+      const amount = Math.round(require('./pricing').loanValue(ctx.drugs[lead.drug_ID], ctx.hospitals[lead.supplier_ID], items, new Date().toISOString().slice(0, 10)).medicine); // supplier's price tier
       out.push(action('accept-request', {
         body: { transferId: tid }, params: p, confirm: true,
         fields: [
@@ -208,6 +210,19 @@ const REGISTRY = {
       return { message: `Asked ${names.join(' and ')}. They have ${require('./config').supplierResponseTimeoutMin} minutes to answer.`, journeyId: requestId };
     },
   },
+  'choose-suppliers': { // from the price vs distance chart: hospitals = "H5" or "H5,H2" (first gives what it can, the next the rest)
+    roles: ['pharmacist'], input: { requestId: 'id!', hospitals: 'string!' },
+    async run({ requestId, hospitals }) {
+      const ids = hospitals.split(',').map(x => x.trim()).filter(Boolean);
+      if (!ids.length || ids.length > 3 || ids.some(x => !/^[A-Za-z0-9_-]{1,10}$/.test(x))) throw err(400, 'INVALID_INPUT', { detail: 'Choose one to three hospitals from the chart.', field: 'hospitals' });
+      const r = await call('RequestService', 'chooseSuppliers', { request: requestId, hospitals: ids }).catch(e => {
+        if (/^(SUPPLIER_NOT_ELIGIBLE|SUPPLIER_NOT_NEEDED)$/.test(e.code)) e.params = { detail: String(e.message).replace(/^[A-Z_]+:\s*/, '') };
+        throw e;
+      });
+      const short = r.totalQty < r.requested ? ` Together they give ${r.totalQty} of ${r.requested} vials.` : '';
+      return { message: `Asked ${r.names.join(' and ')}.${short} They have ${require('./config').supplierResponseTimeoutMin} minutes to answer.`, journeyId: requestId };
+    },
+  },
   'find-supplier-again': {
     roles: ['pharmacist'], input: { requestId: 'id!' },
     async run({ requestId }) {
@@ -318,6 +333,61 @@ const REGISTRY = {
       const u = await require('./accounts').setEmail(viewer.userId, email);
       await require('./audit').log(viewer.userId, 'ALERT_EMAIL_SET', { user: viewer.userId, email: u.email ? 'set' : 'cleared' });
       return { message: u.email ? t('home.email.set', { email: u.email }) : t('home.email.cleared'), result: { email: u.email || null } };
+    },
+  },
+
+  // ---------- agentic AI (srv/lib/agents): agents propose, rules verify, humans approve ----------
+  'ask-copilot': {
+    roles: ['pharmacist', 'approver'], input: { question: 'text!' },
+    async run({ question }, viewer) {
+      if (question.length > 500) throw err(400, 'INVALID_INPUT', { detail: 'Please keep the question under 500 characters.', field: 'question' });
+      const r = await require('./agents/copilot').ask(viewer, question, viewer.userId);
+      return { message: r.answer, result: r };
+    },
+  },
+  'review-plans': {
+    roles: ['pharmacist'], input: { requestId: 'id!' },
+    async run({ requestId }, viewer) {
+      const r = await require('./agents/planner').review(requestId, viewer, viewer.userId);
+      const best = r.plans.find(p => p.rank === r.recommended);
+      const choose = best ? action('choose-plan', { body: { requestId, plan: best.rank }, params: { other: best.legs.map(l => l.hospital).join(' and '), qty: best.totalQty }, confirm: true }) : action('find-supplier-again', { body: { requestId } });
+      return { message: r.explanation, result: r, journeyId: requestId, next: { type: 'review', review: r, action: choose } };
+    },
+  },
+  'intake-text': {
+    roles: ['pharmacist'], input: { stockText: 'text!' },
+    async run({ stockText }, viewer) {
+      if (stockText.length > 20000) throw err(400, 'INVALID_INPUT', { detail: 'Please paste at most one page (about 200 lines) at a time.', field: 'stockText' });
+      const r = await require('./agents/intake').preview(viewer.hospitalId, stockText, viewer.userId);
+      const fix = r.rejected.length ? ` ${r.rejected.length} line${r.rejected.length === 1 ? '' : 's'} could not be used.` : '';
+      if (!r.rows.length) return { message: `We could not read any stock line.${fix}${r.question ? ' ' + r.question : ''}`, result: r };
+      return { message: `We read ${r.rows.length} rows. Check them, then save.${fix}${r.question ? ' ' + r.question : ''}`, result: r,
+        next: { type: 'action', action: action('confirm-photo', { body: { previewId: r.previewId } }) } };
+    },
+  },
+  'approve-proposal': {
+    roles: ['pharmacist', 'approver', 'admin'], input: { proposalId: 'id!', note: 'text' },
+    async run({ proposalId, note }, viewer) {
+      const r = await require('./agents/proposals').approve(proposalId, viewer, note && note.slice(0, 300));
+      const j = r.proposal.ref && await journeyIdOfTransfer(r.proposal.ref).catch(() => null);
+      return { message: r.message, ...(j ? { journeyId: j } : {}) };
+    },
+  },
+  'reject-proposal': {
+    roles: ['pharmacist', 'approver', 'admin'], input: { proposalId: 'id!', note: 'text' },
+    async run({ proposalId, note }, viewer) {
+      return require('./agents/proposals').reject(proposalId, viewer, note && note.slice(0, 300));
+    },
+  },
+  'agent-recheck-route': {
+    roles: ['pharmacist', 'admin'], input: { transferId: 'id!' },
+    async run({ transferId }, viewer) {
+      const tr = await SELECT.one.from('medilink.Transfers').where({ ID: transferId });
+      if (!tr || (viewer.role !== 'admin' && ![tr.supplier_ID, tr.receiver_ID].includes(viewer.hospitalId))) throw err(404, 'TRANSFER_NOT_FOUND');
+      if (!['ASSIGNED', 'IN_TRANSIT'].includes(tr.status)) throw err(409, 'INVALID_STATUS');
+      const r = await require('./delivery').replan(transferId, viewer.userId);
+      const { fmtClock } = require('./journey');
+      return { message: r.open ? `A road is open again. New arrival time about ${fmtClock(Date.now() + r.etaMin * 60000)}.` : 'Still no open road. The courier keeps waiting at a safe place.', journeyId: await journeyIdOfTransfer(transferId) };
     },
   },
 };

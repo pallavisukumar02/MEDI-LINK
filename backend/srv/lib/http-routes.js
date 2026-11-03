@@ -120,6 +120,17 @@ function mount(app) {
     if (!out) throw Object.assign(new Error('NOT_FOUND'), { status: 404, code: 'NOT_FOUND' }); // not a party: same as unknown
     return out;
   }));
+  // price vs distance for an open request (requesting hospital, admin): only stock that passes the 8 hard rules
+  me.get('/journeys/:id/prices', view((v, req) => require('./price-distance').forRequest(req.params.id, v)));
+  // agent activity: recent agent runs and open proposals for my hospital (admin: all), newest first
+  me.get('/agents', view(async v => {
+    const where = v.role === 'admin' ? {} : { hospital_ID: v.hospitalId || '-' };
+    const [runs, proposals] = await Promise.all([
+      SELECT.from('medilink.AgentRuns').columns('ID', 'agent', 'mode', 'input', 'steps', 'createdAt').where(where).orderBy('createdAt desc').limit(20),
+      SELECT.from('medilink.AgentProposals').columns('ID', 'agent', 'kind', 'title', 'status', 'createdAt', 'decidedBy', 'decidedAt').where(where).orderBy('createdAt desc').limit(20),
+    ]);
+    return { llm: require('./llm').enabled(), agentsEnabled: require('./config').agentsEnabled, runs, proposals };
+  }));
   const userOrIp = req => (cds.context?.user && !cds.context.user._is_anonymous ? 'u:' + cds.context.user.id : ratelimit.ipOf(req));
   me.post('/actions/:actionId', ratelimit.limit('actions', 60, ratelimit.MIN, userOrIp), dispatch);
   me.use((err, req, res, _next) => fail(res, err.type === 'entity.parse.failed' ? Object.assign(err, { status: 400, code: 'INVALID_INPUT', params: { detail: 'The request body is not valid JSON.' } }) : err));

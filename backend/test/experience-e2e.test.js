@@ -55,7 +55,7 @@ describe('PRD section 18 demo through /me/* only', () => {
 
     const expired = await act('asha', ob.nextAction, { licenceNo: 'KA-BLR-20B-1004' });
     expect(expired.status).toBe(403);
-    expect(expired.data).toEqual({ code: 'LICENCE_EXPIRED', title: 'Your licence has expired', message: expect.stringMatching(/^Your drug licence KA-BLR-20B-1004 expired on \d{1,2} \w{3} \d{4}\.$/), fix: 'Renew it with the Karnataka Drugs Control Department, then try again.', retryable: false });
+    expect(expired.data).toEqual({ code: 'LICENCE_EXPIRED', title: 'Your licence has expired', message: expect.stringMatching(/^Your drug licence KA-BLR-20B-1004 expired on \d{1,2} \w{3,4} \d{4}\.$/), fix: 'Renew it with the Karnataka Drugs Control Department, then try again.', retryable: false });
     const unknown = await act('asha', 'enter-licence', { licenceNo: 'KA-XXX-0000' });
     expect(unknown.data).toMatchObject({ code: 'LICENCE_UNKNOWN', title: 'We could not find this licence' });
     const empty = await act('asha', 'enter-licence', {});
@@ -242,7 +242,7 @@ describe('PRD section 18 demo through /me/* only', () => {
     expect(after.alerts.some(a => a.kind === 'SHORTFALL')).toBe(false);
     const repay = task(after, 'repay');
     expect(repay).toMatchObject({ title: 'Repay a loan', urgency: 'low' });
-    expect(repay.subtitle).toMatch(/^You owe Banashankari Care Hospital 16 vials of Carboplatin 450 mg \(or ₹29,600\)$/);
+    expect(repay.subtitle).toMatch(/^You owe Banashankari Care Hospital 16 vials of Carboplatin 450 mg \(or ₹27,380\)$/); // supplier's price: 12 near-expiry vials 10% off (1,665) + 4 at cost (1,850)
     expect(journeyOf(await home('ravi'), s.request).headline).toBe('Loan of 16 vials open: repay in kind or at cost');
 
     const m = (await T.axios.get('/admin/metrics', as('admin'))).data.metrics;

@@ -23,6 +23,11 @@ async function runSyncCycle() {
     monitor: await step('monitor', async d => (await monitor.run(undefined, d)).length, digest),
     stale: await step('stale', d => sync.detectStale(undefined, d), digest),
     licences: await step('licences', d => sync.licenceWatch(undefined, d), digest),
+    prices: await step('prices', async () => { // stock moved: hospitals choosing a supplier get fresh prices and distances
+      const open = await SELECT.from('medilink.Requests').columns('ID', 'hospital_ID').where({ status: 'MATCHED' });
+      for (const r of open) require('./ws').emit('prices', { requestId: r.ID, hospitalId: r.hospital_ID });
+      return open.length;
+    }),
   };
   await step('digest', () => require('./notify').sendDigest(digest));
   return out;

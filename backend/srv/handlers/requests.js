@@ -50,6 +50,11 @@ module.exports = cds.service.impl(function () {
     return workflow.choosePlan(req.data.request, req.data.rank || 1, req.user.id);
   }));
 
+  this.on('chooseSuppliers', wrap(async req => {
+    await ownRequest(req, req.data.request);
+    return workflow.chooseSuppliers(req.data.request, req.data.hospitals, req.user.id);
+  }));
+
   this.on('cancelRequest', wrap(async req => {
     const r = await ownRequest(req, req.data.request);
     return workflow.cancelRequest(r.ID, req.user.id);

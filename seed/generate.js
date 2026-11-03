@@ -87,6 +87,10 @@ const drugById = Object.fromEntries(DRUGS.map(d => [d.ID, d]));
 const REORDER_LEVELS = { 'D-CARB450': 10, 'D-CARB150': 5, 'D-CISP50': 3, 'D-OXAL100': 4, 'D-PACL260': 4, 'D-DOXO50': 4, 'D-CYCL500': 4, 'D-5FU500': 3, 'D-GEMC1G': 4, 'D-TRAS440': 2, 'D-BORT2': 2, 'D-RITU500': 2 };
 for (const d of DRUGS) d.reorderLevel = REORDER_LEVELS[d.ID];
 
+// Price tiers (synthetic): share of the landed cost a hospital charges when it lends. Never above 1.00 (lent at cost).
+const PRICING = { H1: 1.00, H2: 0.90, H3: 0.95, H4: 0.97, H5: 1.00 };
+const SEED_VERSION = 'v2'; // bump when the CSV columns change, so an old seed is regenerated
+
 const BRANDS = { // fictional brands / manufacturers
   'D-CARB450': [['Carbokem', 'Sunrise Oncology Ltd (synthetic)'], ['Platinex', 'Medora Labs (synthetic)']],
   'D-CARB150': [['Carbokem', 'Sunrise Oncology Ltd (synthetic)']],
@@ -114,7 +118,7 @@ function build(anchor, now = new Date()) {
     { ID: 'H3', licenceNo: 'KA-BLR-20B-1003', name: 'Lakeside Oncology Centre, Koramangala', address: '5th Block, Koramangala, Bengaluru 560095', lat: 12.935200, long: 77.624500, licenceValidTill: '2028-06-30', software: 'CONNECTOR', connected: true, adminEmail: 'admin.h3@example.org' },
     { ID: 'H4', licenceNo: 'KA-BLR-20B-1004', name: 'Hebbal Community Hospital, Hebbal', address: 'Bellary Road, Hebbal, Bengaluru 560024', lat: 13.035800, long: 77.597000, licenceValidTill: day(-62), software: 'SHEET', connected: true, adminEmail: 'admin.h4@example.org' },
     { ID: 'H5', licenceNo: 'KA-BLR-20B-1005', name: 'Banashankari Care Hospital, Banashankari', address: '2nd Stage, Banashankari, Bengaluru 560070', lat: 12.925500, long: 77.546800, licenceValidTill: '2027-09-30', software: 'MEDISOFT', connected: true, adminEmail: 'admin.h5@example.org' },
-  ].map(h => ({ ...h, safetyMarginPct: 20, coverWindowDays: 14, feedStale: false, synthetic: true, lastSyncedAt: h.connected ? nowIso : null }));
+  ].map(h => ({ ...h, safetyMarginPct: 20, coverWindowDays: 14, feedStale: false, synthetic: true, lastSyncedAt: h.connected ? nowIso : null, pricingMultiplier: PRICING[h.ID] }));
 
   const LICENCES = [
     ...HOSPITALS.map(h => ({ ID: 'LIC-' + h.ID, partyId: h.ID, partyType: 'HOSPITAL', licenceNo: h.licenceNo, licenceType: 'Form 20B/21B drug licence (synthetic)', validTill: h.licenceValidTill })),
@@ -280,7 +284,7 @@ function scale(anchor, total = 50, now = new Date()) {
     const jitter = () => Math.round((rnd() - 0.5) * 0.008 * 1e6) / 1e6;
     const licenceNo = `KA-BLR-20B-${1000 + i}`;
     out.HOSPITALS.push({ ID: id, licenceNo, name: `Synthetic Hospital ${i}, ${loc}`, address: `${loc}, Bengaluru (synthetic)`, lat: Math.round((lat + jitter()) * 1e6) / 1e6, long: Math.round((long + jitter()) * 1e6) / 1e6,
-      licenceValidTill: '2028-03-31', software: 'SHEET', safetyMarginPct: 20, coverWindowDays: 14, connected: true, lastSyncedAt: now.toISOString(), feedStale: false, adminEmail: `admin.h${i}@example.org`, synthetic: true });
+      licenceValidTill: '2028-03-31', software: 'SHEET', safetyMarginPct: 20, coverWindowDays: 14, connected: true, lastSyncedAt: now.toISOString(), feedStale: false, adminEmail: `admin.h${i}@example.org`, synthetic: true, pricingMultiplier: [1, 0.95, 0.9][i % 3] });
     out.LICENCES.push({ ID: 'LIC-' + id, partyId: id, partyType: 'HOSPITAL', licenceNo, licenceType: 'Form 20B/21B drug licence (synthetic)', validTill: '2028-03-31' });
     for (const d of DRUGS) {
       if (rnd() < 0.3) continue;
@@ -302,11 +306,11 @@ function scale(anchor, total = 50, now = new Date()) {
 function write(data, { quiet } = {}) {
   for (const d of Object.values(OUT)) fs.mkdirSync(d, { recursive: true });
   const w = (name, rows, cols) => fs.writeFileSync(path.join(OUT.cap, `medilink-${name}.csv`), csv(rows, cols));
-  w('Hospitals', data.HOSPITALS, ['ID', 'licenceNo', 'name', 'address', 'lat', 'long', 'licenceValidTill', 'software', 'safetyMarginPct', 'coverWindowDays', 'connected', 'lastSyncedAt', 'feedStale', 'adminEmail', 'synthetic']);
+  w('Hospitals', data.HOSPITALS, ['ID', 'licenceNo', 'name', 'address', 'lat', 'long', 'licenceValidTill', 'software', 'safetyMarginPct', 'coverWindowDays', 'connected', 'lastSyncedAt', 'feedStale', 'adminEmail', 'synthetic', 'pricingMultiplier']);
   w('Drugs', data.DRUGS, ['ID', 'genericName', 'strength', 'dosageForm', 'criticalFlag', 'storageClass', 'nlemSection', 'unitCost', 'reorderLevel']);
   w('Licences', data.LICENCES, ['ID', 'partyId', 'partyType', 'licenceNo', 'licenceType', 'validTill']);
   w('DeliveryPartners', data.PARTNERS, ['ID', 'name', 'licenceNo', 'coldChainCertified', 'storageClasses', 'active', 'lat', 'long', 'dispatchEmail']);
-  w('Lots', data.capLots, ['ID', 'hospital_ID', 'drug_ID', 'brandName', 'manufacturer', 'batchNo', 'quantity', 'expiryDate', 'storageClass', 'sealed', 'quarantined', 'source', 'lastSynced']);
+  w('Lots', data.capLots, ['ID', 'hospital_ID', 'drug_ID', 'brandName', 'manufacturer', 'batchNo', 'quantity', 'expiryDate', 'storageClass', 'sealed', 'quarantined', 'source', 'lastSynced', 'unitPrice']);
   w('Bookings', data.capBookings, ['ID', 'hospital_ID', 'patientRef', 'drug_ID', 'doseUnits', 'scheduledDate', 'intent', 'source']);
   w('Flags', data.FLAGS, ['ID', 'batchNo', 'manufacturer', 'drug_ID', 'genericName', 'reason', 'source', 'date', 'active', 'synthetic']);
   w('Requests', data.REQUESTS, ['ID', 'hospital_ID', 'drug_ID', 'qty', 'neededBy', 'allowBrandSwitch', 'preferredBrand', 'note', 'status']);
@@ -379,12 +383,12 @@ function write(data, { quiet } = {}) {
     '2 | Oxaliplatin for Injection 100 mg | OX23Q404 | 03/2023 | 02/2026 | Deccan Biogenerics (synthetic) | Spurious',
   ].join('\n') + '\n');
 
-  fs.writeFileSync(path.join(OUT.seed, '.anchor'), data.anchor + '\n');
+  fs.writeFileSync(path.join(OUT.seed, '.anchor'), `${data.anchor} ${SEED_VERSION}\n`);
   if (!quiet) console.log(`[seed] synthetic seed written for anchor ${data.anchor}: ${data.capLots.length} CAP lots, ${data.capBookings.length} CAP bookings, MediSoft H1/H5, connector H3`);
 }
 
 function isStale(env = process.env) {
-  try { return fs.readFileSync(path.join(OUT.seed, '.anchor'), 'utf8').trim() !== iso(anchorDate(env)); } catch { return true; }
+  try { return fs.readFileSync(path.join(OUT.seed, '.anchor'), 'utf8').trim() !== `${iso(anchorDate(env))} ${SEED_VERSION}`; } catch { return true; }
 }
 
 function run(opts = {}) {
@@ -398,7 +402,7 @@ function run(opts = {}) {
   return data;
 }
 
-module.exports = { run, build, scale, isStale, hashRef, anchorDate, SEED_REF_SALT };
+module.exports = { run, build, scale, isStale, hashRef, anchorDate, SEED_REF_SALT, PRICING };
 if (require.main === module) {
   const i = process.argv.indexOf('--hospitals');
   run({ hospitals: i > 0 ? Number(process.argv[i + 1]) : 5 });

@@ -148,6 +148,7 @@ cds.on('bootstrap', app => {
 cds.on('served', async () => {
   const db = await cds.connect.to('db');
   require('./lib/audit').guard(db);
+  await require('./lib/db-upgrade').upgrade(db).catch(e => LOG.warn('database upgrade skipped:', e.message)); // older database files: add new tables / columns
   const hasUsers = await cds.tx(() => SELECT.one.from('medilink.Users').columns('username')).catch(e => {
     throw new Error(`The database has no MediLink tables yet (${e.message.split('\n')[0]}). Run: npm run db:init`);
   });

@@ -1,0 +1,3 @@
+# Files the pages load with an integrity hash (SRI) must stay byte-for-byte as committed:
+# Git must never change their line endings on Windows, or the browser refuses to run them (blank map, no QR code).
+frontend/vendor/** -text

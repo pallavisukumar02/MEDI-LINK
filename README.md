@@ -181,6 +181,10 @@ Make a random value: `node -e "console.log(require('crypto').randomBytes(32).toS
 | `NEARBY_KM` | 1 | Live tracking: courier this close to the receiver = "Nearby" step |
 | `EXPIRY_ALERT_DAYS` | `90,60,30,7` | Expiry alert tiers in days (one alert per lot for the tightest tier reached, plus one when expired) |
 | `LLM_PROVIDER` | `none` | `none`, `openai-compatible` or `aicore`. **Everything works with `none`** |
+| `AGENTS_ENABLED` | `true` | AI agents (assistant, plan check, watchtower, paste-a-stock-list). Rules-only while `LLM_PROVIDER=none`; `false` turns them off ([`docs/AGENTS.md`](docs/AGENTS.md)) |
+| `AGENT_MAX_STEPS` | `6` | Most tool calls in one agent run, then the rules answer is used |
+| `DELIVERY_RATES` | `AMBIENT:150:12,COLD:350:22,FROZEN:500:30` | Courier quote per storage class: base fee + ₹ per km (synthetic) for the price-vs-distance chart ([`docs/PRICING.md`](docs/PRICING.md)) |
+| `NEAR_EXPIRY_DISCOUNT_PCT` | `10` | Discount on near-expiry batches in prices and loan values |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | *(empty)* | `openai-compatible`: `POST {LLM_BASE_URL}/chat/completions` |
 | `AICORE_SERVICE_KEY_PATH`, `AICORE_MODEL_NAME`, `AICORE_RESOURCE_GROUP` | `./aicore-key.json`, *(empty)*, `default` | `aicore`: optional SAP AI Core ([SAP_INTEGRATIONS](docs/SAP_INTEGRATIONS.md)) |
 | `TRUST_FEED_LLM_ENABLED` | true | Allow LLM parsing of CDSCO alerts (only when an LLM is on) |
@@ -237,6 +241,23 @@ Off by default, each switched on by env only; MediLink works fully without them.
 `GET /health/integrations` (admin) lists, each as connected / fallback / misconfigured: Database, Logins, Hospital access tokens,
 Email alerts (SMTP), SAP Alert Notification, AI (LLM), SAP Build Process Automation, SAP Business Accelerator Hub (sandbox),
 OR-Tools ranking service, OpenRouteService, Open-Meteo, MediSoft HIS.
+
+## 7a. Agentic AI
+
+Four agents, built on the same rule: **agents propose, rules verify, humans approve**. Full design: [`docs/AGENTS.md`](docs/AGENTS.md).
+
+| Agent | Where you see it | What it does |
+|---|---|---|
+| Assistant (copilot) | Home → **Ask MediLink** | Read-only questions: "Which drugs will run short in the next 10 days?", "Which lots expire this month?", "Who can lend carboplatin within 15 km?" |
+| Plan check (planner + compliance + critic) | Choose-supplier task → **Check plans with AI** | Re-runs the 8 hard rules on every plan, checks donor cover, closed roads and courier load, explains the pick; you still tap "Ask …" |
+| Watchtower | Home → **AI suggestion** cards | On a temperature excursion, broken seal, no open road or late arrival: options + drafted incident report, approve or dismiss |
+| Intake helper | Stock → **Paste a stock list** | Any pasted stock text → rows checked against the medicine list, one clarifying question, saved only when you confirm |
+
+With `LLM_PROVIDER=none` every agent runs on rules; with SAP AI Core (`LLM_PROVIDER=aicore`) the model plans the tool calls and writes the text, and MediLink throws away any answer with a number the tools did not return. `GET /me/agents` lists recent agent runs and suggestions. Every tool call and decision is in the audit chain.
+
+## 7b. Price vs distance
+
+While a pharmacist chooses a supplier, the request page shows a live chart: one dot per hospital that passes all 8 safety rules, distance across, price per vial (with the courier quote) up. A dashed line joins the best trade-offs; reference lines mark the landed cost and how far a courier can come before the needed-by day ends. Tap a dot to see the breakdown and ask that hospital, or split the order across up to three hospitals; the 8 rules run again when you ask. Prices are synthetic tiers on the landed cost (never above it), near-expiry stock is 10% off, and loans repaid at cost use the supplier's price. **Price is shown, never ranked on.** Details: [`docs/PRICING.md`](docs/PRICING.md). API: `GET /me/journeys/:id/prices`; live event `prices` on the tracking socket.
 
 ## 8. API overview
 

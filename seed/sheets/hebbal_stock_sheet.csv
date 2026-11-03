@@ -1,15 +1,15 @@
 Item Name,Strength,Form,Brand,Mfr,Batch No,Qty,ExpDt,Store,Sealed?
-Carboplatin,450 mg/45 mL,Injection,Carbokem,Sunrise Oncology Ltd (synthetic),SOL24B310,30,29/06/2027,Room,Y
-Cisplatin,50 mg/50 mL,Injection,Cisplanova,Medora Labs (synthetic),CISP51F191,6,24/06/2027,Room,Y
-Cisplatin,50 mg/50 mL,Injection,Cisplanova,Medora Labs (synthetic),CISP93C548,7,09/11/2027,Room,Y
-Oxaliplatin,100 mg,Powder for injection,Oxaliva,Deccan Biogenerics (synthetic),OXAL24D416,8,31/08/2027,Room,Y
-Oxaliplatin,100 mg,Powder for injection,Oxaliva,Deccan Biogenerics (synthetic),OXAL54G800,9,02/04/2027,Room,Y
-Doxorubicin,50 mg/25 mL,Injection,Doxorin,Kaveri Pharma (synthetic),DOXO97L225,7,14/11/2027,Fridge,Y
-Doxorubicin,50 mg/25 mL,Injection,Doxorin,Kaveri Pharma (synthetic),DOXO48F230,8,17/06/2027,Fridge,Y
-Cyclophosphamide,500 mg,Powder for injection,Cyclomed,Kaveri Pharma (synthetic),CYCL54D155,12,30/03/2027,Room,Y
-Fluorouracil,500 mg/10 mL,Injection,Fluracil,Deccan Biogenerics (synthetic),5FU522L506,4,26/11/2027,Room,Y
-Gemcitabine,1 g,Powder for injection,Gemzora,Medora Labs (synthetic),GEMC30F794,8,08/06/2027,Room,Y
-Gemcitabine,1 g,Powder for injection,Gemzora,Medora Labs (synthetic),GEMC77E400,8,19/07/2027,Room,Y
-Bortezomib,2 mg,Powder for injection,Bortenix,Deccan Biogenerics (synthetic),BORT21C603,6,19/10/2027,Room,Y
-Rituximab,500 mg/50 mL,Injection,Rituvia,Nandi Biologics (synthetic),RITU72H634,12,07/08/2027,Fridge,Y
-Rituximab,500 mg/50 mL,Injection,Rituvia,Nandi Biologics (synthetic),RITU58K866,12,01/03/2027,Fridge,Y
+Carboplatin,450 mg/45 mL,Injection,Carbokem,Sunrise Oncology Ltd (synthetic),SOL24B310,30,01/07/2027,Room,Y
+Cisplatin,50 mg/50 mL,Injection,Cisplanova,Medora Labs (synthetic),CISP51F191,6,26/06/2027,Room,Y
+Cisplatin,50 mg/50 mL,Injection,Cisplanova,Medora Labs (synthetic),CISP93C548,7,11/11/2027,Room,Y
+Oxaliplatin,100 mg,Powder for injection,Oxaliva,Deccan Biogenerics (synthetic),OXAL24D416,8,02/09/2027,Room,Y
+Oxaliplatin,100 mg,Powder for injection,Oxaliva,Deccan Biogenerics (synthetic),OXAL54G800,9,04/04/2027,Room,Y
+Doxorubicin,50 mg/25 mL,Injection,Doxorin,Kaveri Pharma (synthetic),DOXO97L225,7,16/11/2027,Fridge,Y
+Doxorubicin,50 mg/25 mL,Injection,Doxorin,Kaveri Pharma (synthetic),DOXO48F230,8,19/06/2027,Fridge,Y
+Cyclophosphamide,500 mg,Powder for injection,Cyclomed,Kaveri Pharma (synthetic),CYCL54D155,12,01/04/2027,Room,Y
+Fluorouracil,500 mg/10 mL,Injection,Fluracil,Deccan Biogenerics (synthetic),5FU522L506,4,28/11/2027,Room,Y
+Gemcitabine,1 g,Powder for injection,Gemzora,Medora Labs (synthetic),GEMC30F794,8,10/06/2027,Room,Y
+Gemcitabine,1 g,Powder for injection,Gemzora,Medora Labs (synthetic),GEMC77E400,8,21/07/2027,Room,Y
+Bortezomib,2 mg,Powder for injection,Bortenix,Deccan Biogenerics (synthetic),BORT21C603,6,21/10/2027,Room,Y
+Rituximab,500 mg/50 mL,Injection,Rituvia,Nandi Biologics (synthetic),RITU72H634,12,09/08/2027,Fridge,Y
+Rituximab,500 mg/50 mL,Injection,Rituvia,Nandi Biologics (synthetic),RITU58K866,12,03/03/2027,Fridge,Y

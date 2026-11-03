@@ -62,8 +62,10 @@ async function load({ requestIds = [], transferIds = [] }) {
     q('medilink.Requests', inList('ID', reqIds)), q('medilink.Approvals', inList('transfer_ID', tIds)), q('medilink.Ledger', inList('transfer_ID', tIds)),
     q('medilink.RoadClosures', inList('transfer_ID', tIds)), q('medilink.TransferLots', inList('transfer_ID', tIds)), q('medilink.Plans', inList('request_ID', reqIds)),
     tIds.length ? SELECT.from('medilink.ConditionLogs').where({ ...inList('transfer_ID', tIds), excursion: true }).orderBy('loggedAt') : [],
-    SELECT.from('medilink.Hospitals').columns('ID', 'name', 'lat', 'long'), SELECT.from('medilink.Drugs'), SELECT.from('medilink.DeliveryPartners').columns('ID', 'name'),
+    SELECT.from('medilink.Hospitals').columns('ID', 'name', 'lat', 'long', 'pricingMultiplier'), SELECT.from('medilink.Drugs'), SELECT.from('medilink.DeliveryPartners').columns('ID', 'name'),
   ]);
+  const lotIds = [...new Set(transferLots.map(l => l.lot_ID))]; // expiry + batch price: what a loan of these lots is worth
+  const stockLots = lotIds.length ? await SELECT.from('medilink.Lots').columns('ID', 'expiryDate', 'unitPrice').where({ ID: { in: lotIds } }) : [];
   // latest GPS fix and latest temperature reading per in-transit shipment (phone fixes carry no temperature)
   const lastLog = {}, lastTemp = {};
   for (const id of inTransit) {
@@ -75,7 +77,7 @@ async function load({ requestIds = [], transferIds = [] }) {
     closures: group(closures, 'transfer_ID'), lots: group(transferLots, 'transfer_ID'), plans: group(plans, 'request_ID'),
     firstExcursion: Object.fromEntries(Object.entries(group(excursions, 'transfer_ID')).map(([k, v]) => [k, v[0]])), lastLog, lastTemp,
     hospitals: Object.fromEntries(hospitals.map(h => [h.ID, h])), drugs: Object.fromEntries(drugs.map(d => [d.ID, d])),
-    partners: Object.fromEntries(partners.map(p => [p.ID, p])), reviews: {}, covers: {},
+    partners: Object.fromEntries(partners.map(p => [p.ID, p])), stockLots: Object.fromEntries(stockLots.map(l => [l.ID, l])), reviews: {}, covers: {},
   };
 }
 

@@ -144,7 +144,7 @@ function fieldHtml(f, i, prefix = 'f') {
     control = `<select class="input" id="${id}" name="${esc(f.name)}" ${req} ${desc}>${f.options.map(o => `<option value="${esc(o.value)}" ${String(f.default ?? '') === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
   } else if (f.type === 'file') {
     control = `<input class="input file" id="${id}" name="${esc(f.name)}" type="file" accept="${esc(f.accept || '')}" ${req} ${desc}>`;
-  } else if (f.type === 'text' && /note|reason/i.test(f.name)) {
+  } else if (f.type === 'text' && /note|reason|stockText|question/i.test(f.name)) {
     control = `<textarea class="input" id="${id}" name="${esc(f.name)}" ${req} ${desc}>${esc(f.default ?? '')}</textarea>`;
   } else {
     const type = { number: 'number', date: 'date', tel: 'tel', email: 'email' }[f.type] || 'text';
