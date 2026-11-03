@@ -7,6 +7,9 @@
 <meta name="description" content="MediLink is a prototype network where hospitals lend and borrow critical medicines. SAP Hackfest 2026. Demo data only.">
 <meta name="theme-color" content="#E6E8EB">
 <link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..700&display=swap">
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <script src="js/landing-boot.js"></script>
 <link rel="stylesheet" href="css/landing.css">
@@ -79,7 +82,7 @@
       <canvas id="pack-canvas" role="img" aria-label="Interactive 3D blister pack illustration" aria-describedby="pack-hint"></canvas>
       <div class="overlay" aria-hidden="true">
         <svg class="trail" id="trail"><path id="trail-path" d=""/></svg>
-        <div class="sticker" id="sticker">VERIFIED<br>BATCHES</div>
+        <div class="sticker" id="sticker"><svg width="11" height="11" viewBox="0 0 24 24" fill="#3B2218" style="vertical-align:-1px;margin-right:6px"><polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9"/></svg>VERIFIED BATCHES</div>
         <div class="pin" id="pin">
           <span class="pin-ring"></span>
           <svg viewBox="0 0 36 46" width="36" height="46"><path d="M18 2C9.2 2 2 9 2 17.6 2 29 18 44 18 44s16-15 16-26.4C34 9 26.8 2 18 2Z" fill="#3B2218"/><path d="M15.5 9h5v6h6v5h-6v6h-5v-6h-6v-5h6Z" fill="#F2F3F5"/></svg>
@@ -96,7 +99,7 @@
       </div>
       <p class="sr" id="pack-hint">Illustrative data. With the keyboard, use the arrow keys to inspect each pill and Enter to send it.</p>
       <p class="sr" id="pack-status" aria-live="polite"></p>
-      <p class="scene-caption">Hover a pill. Click to send.</p>
+      <p class="scene-caption">HOVER A PILL. CLICK TO SEND.</p>
     </div>
   </div>
 </section>
@@ -346,5 +349,6 @@
 </dialog>
 
 <script src="js/landing.js"></script>
+<script src="js/nav-back.js" defer></script>
 </body>
 </html>

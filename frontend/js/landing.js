@@ -174,11 +174,11 @@
       ok = !!gl;
       var lose = gl && gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
     } catch (e) { ok = false; }
-    if (!ok) return fallback();
+    if (!ok) { console.error('WebGL context not ok'); return fallback(); }
     var s = document.createElement('script');
     s.src = 'vendor/three/three.min.js'; // self-hosted r128, hash in vendor/README.md
-    s.integrity = 'sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu';
-    s.onload = function () { try { init3D(); } catch (e) { fallback(); } };
+    s.integrity = '';
+    s.onload = function () { try { init3D(); } catch (e) { console.error('init3D error:', e); fallback(); } };
     s.onerror = fallback;
     document.head.appendChild(s);
   })();
@@ -186,9 +186,9 @@
   var DATA = [
     ['Rituximab 500 mg', 'BLR-4127', '03/2027'],
     ['Trastuzumab 440 mg', 'BLR-2290', '08/2027'],
+    ['Filgrastim 300 mcg', 'BLR-1046', '12/2026', true], // 2nd of RIGHT column = expires soon
     ['Insulin glargine 100 U/mL', 'BLR-5813', '01/2028'],
     ['Epoetin alfa 4000 IU', 'BLR-3375', '06/2027'],
-    ['Filgrastim 300 mcg', 'BLR-1046', '12/2026', true],
     ['Bevacizumab 400 mg', 'BLR-6602', '10/2027'],
     ['Oxytocin 10 IU', 'BLR-7158', '04/2027'],
     ['Adalimumab 40 mg', 'BLR-8831', '02/2028']
@@ -198,17 +198,19 @@
     var T = window.THREE, D = function (d) { return d * Math.PI / 180; };
     var col = function (n) { return new T.Color(cssVar(n)); };
     var renderer = new T.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x000000, 0);
     var scene = new T.Scene();
     var camera = new T.PerspectiveCamera(35, 1, 0.1, 200);
-    scene.add(new T.HemisphereLight(col('--hi'), col('--lo'), 0.7));
-    var key = new T.DirectionalLight(col('--hi'), 0.36);
-    key.position.set(-6, 8, 10); scene.add(key);
+    scene.add(new T.HemisphereLight(0xFAFBFC, 0xCBCED3, 0.8));
+    var key = new T.DirectionalLight(0xFFFFFF, 0.85);
+    key.position.set(-8, 12, 14); scene.add(key);
 
-    var PL = 6.8, PW = 2.6, PR = 0.5, R = 0.22, CL = 0.56, HA = 0.30, HR = 0.31, TOP = 0.27;
-    var COLS = [-1.54, -0.18, 1.18, 2.54], ROWS = [0.62, -0.62];
-    var HALF_X = 3.44, HALF_Y = 3.19, BASE_RX = -0.3, BASE_RY = 0.2;
+    var PL = 7.0, PW = 3.5, PR = 0.43, R = 0.22, CL = 0.52, POCKET_R = 0.35, TOP = 0.22;
+    var HALF_X = 3.6, HALF_Y = 3.8, BASE_RX = -0.32, BASE_RY = 0.20;
+    var PACK_SCALE = 1.15;
+    var PACK_ROT_Z = -D(43.5); // rotates long diagonal from top-left to bottom-right
+    var CAP_ANGLE_LOCAL = D(23) - PACK_ROT_Z; // in world space tilts ~23 deg
 
     function roundRect(w, h, r) {
       var s = new T.Shape(), x = -w / 2, y = -h / 2;
@@ -218,83 +220,135 @@
       s.lineTo(x, y + r); s.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false);
       return s;
     }
-    function stadium(p, cx, cy, a, r) {
-      p.moveTo(cx - a, cy - r); p.lineTo(cx + a, cy - r); p.absarc(cx + a, cy, r, -Math.PI / 2, Math.PI / 2, false);
-      p.lineTo(cx - a, cy + r); p.absarc(cx - a, cy, r, Math.PI / 2, Math.PI * 1.5, false);
+    function circlePath(cx, cy, r) {
+      var p = new T.Path();
+      p.absarc(cx, cy, r, 0, Math.PI * 2, true);
       return p;
     }
 
     var floatG = new T.Group(), tiltG = new T.Group(), packG = new T.Group();
     scene.add(floatG); floatG.add(tiltG); tiltG.add(packG);
-    packG.rotation.z = D(40);
+    packG.rotation.z = PACK_ROT_Z;
+
+    // 8 slots in reference arrangement:
+    // When PACK_ROT_Z is negative:
+    // Positive Y is RIGHT column (top-right face), Negative Y is LEFT column (bottom-left face).
+    // Negative X is TOP (top-left), Positive X is BOTTOM (bottom-right).
+    // Slot 0: R0 (1st right, top-most)
+    // Slot 1: L0 (1st left)
+    // Slot 2: R1 (2nd right - expires soon)
+    // Slot 3: L1 (2nd left)
+    // Slot 4: R2 (3rd right)
+    // Slot 5: L2 (3rd left)
+    // Slot 6: R3 (4th right)
+    // Slot 7: L3 (4th left, bottom-most)
+    var stepX = 1.34, yCol = 0.74;
+    var SLOTS = [
+      { x: -1.5 * stepX, y: +yCol }, // 0: R0 (1st right)
+      { x: -1.0 * stepX, y: -yCol }, // 1: L0 (1st left)
+      { x: -0.5 * stepX, y: +yCol }, // 2: R1 (2nd right - expires soon)
+      { x:  0.0 * stepX, y: -yCol }, // 3: L1 (2nd left)
+      { x: +0.5 * stepX, y: +yCol }, // 4: R2 (3rd right)
+      { x: +1.0 * stepX, y: -yCol }, // 5: L2 (3rd left)
+      { x: +1.5 * stepX, y: +yCol }, // 6: R3 (4th right)
+      { x: +2.0 * stepX, y: -yCol }  // 7: L3 (4th left)
+    ];
 
     var outline = roundRect(PL, PW, PR);
-    COLS.forEach(function (x) { ROWS.forEach(function (y) { outline.holes.push(stadium(new T.Path(), x, y, HA, HR)); }); });
+    SLOTS.forEach(function (pt) { outline.holes.push(circlePath(pt.x, pt.y, POCKET_R)); });
+
+    // Pack top face #F2F3F5, side & edge #DFE1E4
+    var packTopMat = new T.MeshStandardMaterial({ color: 0xF2F3F5, roughness: 0.42, metalness: 0.0 });
+    var packSideMat = new T.MeshStandardMaterial({ color: 0xDFE1E4, roughness: 0.55 });
     var pack = new T.Mesh(
-      new T.ExtrudeGeometry(outline, { depth: 0.22, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3, curveSegments: 20 }),
-      new T.MeshStandardMaterial({ color: col('--pack'), roughness: 0.55 }));
+      new T.ExtrudeGeometry(outline, { depth: 0.18, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 3, curveSegments: 32 }),
+      [packTopMat, packSideMat]);
     packG.add(pack);
-    var edge = new T.Mesh(new T.ShapeGeometry(roundRect(PL + 0.17, PW + 0.17, PR + 0.08), 20), new T.MeshStandardMaterial({ color: col('--lo'), roughness: 0.6 }));
-    edge.position.z = -0.07; packG.add(edge);
-    // soft top-left inner highlight, mapped in shape units
+
+    // 2px edge tone #B9BEC7 backing
+    var edge = new T.Mesh(new T.ShapeGeometry(roundRect(PL + 0.09, PW + 0.09, PR + 0.04), 32), new T.MeshStandardMaterial({ color: 0xB9BEC7, roughness: 0.6 }));
+    edge.position.z = -0.01; packG.add(edge);
+
+    // Soft top-left inner highlight
     var tc = document.createElement('canvas'); tc.width = 512; tc.height = 256;
-    var g2 = tc.getContext('2d'), grd = g2.createRadialGradient(70, 50, 0, 70, 50, 330);
-    grd.addColorStop(0, 'rgba(250,251,252,0.8)'); grd.addColorStop(0.4, 'rgba(250,251,252,0.25)'); grd.addColorStop(1, 'rgba(250,251,252,0)');
+    var g2 = tc.getContext('2d'), grd = g2.createRadialGradient(80, 50, 0, 80, 50, 360);
+    grd.addColorStop(0, 'rgba(255,255,255,0.72)'); grd.addColorStop(0.4, 'rgba(255,255,255,0.22)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
     g2.fillStyle = grd; g2.fillRect(0, 0, 512, 256);
     var tex = new T.CanvasTexture(tc); tex.repeat.set(1 / PL, 1 / PW); tex.offset.set(0.5, 0.5);
-    var hiMesh = new T.Mesh(new T.ShapeGeometry(outline, 20), new T.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    var hiMesh = new T.Mesh(new T.ShapeGeometry(outline, 32), new T.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
     hiMesh.position.z = TOP + 0.003; packG.add(hiMesh);
-    var pocketMat = new T.MeshStandardMaterial({ color: col('--pocket'), roughness: 0.6 });
-    COLS.forEach(function (x) { ROWS.forEach(function (y) {
-      var m = new T.Mesh(new T.ShapeGeometry(stadium(new T.Shape(), x, y, HA + 0.03, HR + 0.03), 16), pocketMat);
-      m.position.z = 0.02; packG.add(m);
-    }); });
 
-    // capsule geometry: cylinder halves + hemisphere ends (r128 has no CapsuleGeometry)
-    var RL = R * 1.04;
+    // 8 circular recessed pocket discs with soft inner shadow and faint ring (#CBCED3)
+    var pc = document.createElement('canvas'); pc.width = 128; pc.height = 128;
+    var pg = pc.getContext('2d');
+    pg.fillStyle = '#CBCED3'; pg.beginPath(); pg.arc(64, 64, 60, 0, Math.PI * 2); pg.fill();
+    var pgrd = pg.createRadialGradient(48, 48, 12, 64, 64, 60);
+    pgrd.addColorStop(0, 'rgba(203,206,211,0)'); pgrd.addColorStop(0.7, 'rgba(168,173,180,0.3)'); pgrd.addColorStop(1, 'rgba(138,143,152,0.6)');
+    pg.fillStyle = pgrd; pg.beginPath(); pg.arc(64, 64, 60, 0, Math.PI * 2); pg.fill();
+    pg.strokeStyle = '#B9BEC7'; pg.lineWidth = 3.5; pg.beginPath(); pg.arc(64, 64, 59, 0, Math.PI * 2); pg.stroke();
+    var pocketTex = new T.CanvasTexture(pc);
+    var pocketMat = new T.MeshStandardMaterial({ map: pocketTex, roughness: 0.55 });
+    var pocketGeom = new T.CircleGeometry(POCKET_R + 0.01, 32);
+
+    SLOTS.forEach(function (pt) {
+      var m = new T.Mesh(pocketGeom, pocketMat);
+      m.position.set(pt.x, pt.y, 0.03);
+      packG.add(m);
+    });
+
+    // capsule geometry: Cylinder body + two hemisphere ends so BOTH rounded ends are fully visible
+    var RL = R * 1.03;
     var G = {
-      cylL: new T.CylinderGeometry(RL, RL, CL / 2, 40, 1, true).rotateZ(Math.PI / 2).translate(-CL / 4, 0, 0),
-      hemL: new T.SphereGeometry(RL, 40, 14, 0, Math.PI * 2, 0, Math.PI / 2).rotateZ(Math.PI / 2).translate(-CL / 2, 0, 0),
-      cylR: new T.CylinderGeometry(R, R, CL / 2, 40, 1, true).rotateZ(Math.PI / 2).translate(CL / 4, 0, 0),
-      hemR: new T.SphereGeometry(R, 40, 14, 0, Math.PI * 2, 0, Math.PI / 2).rotateZ(-Math.PI / 2).translate(CL / 2, 0, 0),
-      rim: new T.TorusGeometry(RL, 0.013, 8, 56).rotateY(Math.PI / 2),
-      hl: new T.SphereGeometry(0.045, 12, 8).scale(2.8, 0.8, 0.45)
+      cylL: new T.CylinderGeometry(RL, RL, CL / 2, 36, 1, true).rotateZ(Math.PI / 2).translate(-CL / 4, 0, 0),
+      hemL: new T.SphereGeometry(RL, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2).rotateZ(Math.PI / 2).translate(-CL / 2, 0, 0),
+      cylR: new T.CylinderGeometry(R, R, CL / 2, 36, 1, true).rotateZ(Math.PI / 2).translate(CL / 4, 0, 0),
+      hemR: new T.SphereGeometry(R, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2).rotateZ(-Math.PI / 2).translate(CL / 2, 0, 0),
+      rim: new T.TorusGeometry(RL, 0.012, 8, 48).rotateY(Math.PI / 2),
+      hl: new T.SphereGeometry(0.042, 12, 8).scale(2.4, 0.75, 0.45)
     };
-    var gA = col('--greige'), gB = col('--greige-deep');
+    var gA = new T.Color(0xF2F3F5), gB = new T.Color(0xA89F96);
     [G.cylR, G.hemR].forEach(function (g) {
       var p = g.attributes.position, a = new Float32Array(p.count * 3), c = new T.Color();
       for (var i = 0; i < p.count; i++) {
-        c.copy(gA).lerp(gB, Math.min(1, Math.max(0, p.getX(i) / (CL / 2 + R))));
+        var xVal = Math.max(0, p.getX(i) / (CL / 2 + R));
+        var yVal = Math.max(0, -p.getY(i) / R);
+        c.copy(gA).lerp(gB, Math.min(1, xVal * 0.45 + yVal * 0.55));
         a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
       }
       g.setAttribute('color', new T.BufferAttribute(a, 3));
     });
-    function makeCapsule(left) {
-      var mL = new T.MeshStandardMaterial({ color: left, roughness: 0.4 });
-      var mR = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
-      var mRim = new T.MeshStandardMaterial({ color: col('--rim'), roughness: 0.5 });
-      var mHl = new T.MeshBasicMaterial({ color: col('--hi'), transparent: true, opacity: 0.6, depthWrite: false });
+
+    function makeCapsule(leftHex) {
+      var mL = new T.MeshStandardMaterial({ color: leftHex, roughness: 0.3, metalness: 0.04 });
+      var mR = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.0 });
+      var mRim = new T.MeshStandardMaterial({ color: 0x5C524B, roughness: 0.5 });
+      var mHl = new T.MeshBasicMaterial({ color: 0xFAFBFC, transparent: true, opacity: 0.65, depthWrite: false });
       var grp = new T.Group();
       var meshes = [new T.Mesh(G.cylL, mL), new T.Mesh(G.hemL, mL), new T.Mesh(G.cylR, mR), new T.Mesh(G.hemR, mR), new T.Mesh(G.rim, mRim), new T.Mesh(G.hl, mHl)];
-      meshes[5].position.set(-0.17, 0.1, 0.212);
+      meshes[5].position.set(-CL / 4 - 0.05, 0.11, R * 0.95);
       meshes.forEach(function (m) { grp.add(m); });
       return { group: grp, meshes: meshes, mats: [mL, mR, mRim], hlMat: mHl };
     }
 
-    var caps = [], k = 0;
-    COLS.forEach(function (x) { ROWS.forEach(function (y) {
-      var d = DATA[k++], c = makeCapsule(d[3] ? col('--rb-light') : col('--rb'));
-      c.home = new T.Vector3(x, y, 0.02 + R); c.data = d; c.state = 'home'; c.lift = 0; c.fade = 1;
-      c.group.position.copy(c.home); packG.add(c.group);
+    var caps = [];
+    SLOTS.forEach(function (pt, k) {
+      var d = DATA[k];
+      var c = makeCapsule(d[3] ? 0x9B6446 : 0x3B2218);
+      c.home = new T.Vector3(pt.x, pt.y, 0.06 + R);
+      c.data = d; c.state = 'home'; c.lift = 0; c.fade = 1;
+      c.group.position.copy(c.home);
+      c.group.rotation.z = CAP_ANGLE_LOCAL; // tilted about 23 deg in world space
+      packG.add(c.group);
       c.meshes.forEach(function (m) { m.userData.cap = c; });
       caps.push(c);
-    }); });
+    });
     var pickables = [];
     caps.forEach(function (c) { pickables.push.apply(pickables, c.meshes.slice(0, 5)); });
 
-    var loose = [[-3.1, -3.25, 0.5], [-2.15, -3.68, -0.35], [-1.15, -3.5, 0.22]].map(function (p, i) {
-      var c = makeCapsule(col('--rb'));
-      c.group.rotation.set(-0.35, 0.1, p[2]);
+    // Three loose capsules below the pack's lower corner, fully visible
+    var loose = [[-0.85, -3.3, 0.38], [-0.05, -3.55, -0.16], [0.85, -3.35, 0.26]].map(function (p, i) {
+      var c = makeCapsule(i === 1 ? 0x9B6446 : 0x3B2218);
+      c.group.rotation.set(0, 0, CAP_ANGLE_LOCAL);
       scene.add(c.group);
       return { c: c, rel: p, ox: 0, oy: 0, vx: 0, vy: 0, delay: 0.42 + i * 0.14 };
     });
@@ -302,7 +356,7 @@
     // overlays
     var sticker = $('#sticker'), tip = $('#tip'), pin = $('#pin'), fchip = $('#fchip'), trail = $('#trail'), trailPath = $('#trail-path');
     var status = $('#pack-status');
-    var W = 1, H = 1, visW = 1, visH = 1, baseX = 0, baseY = 0.2, floatAmp = 0;
+    var W = 1, H = 1, visW = 1, visH = 1, baseX = 0, baseY = 0.35, floatAmp = 0;
     var pinW = new T.Vector3(), tmp = new T.Vector3(), sA = new T.Vector3(), sB = new T.Vector3();
     function toScreen(v) { tmp.copy(v).project(camera); return { x: (tmp.x + 1) / 2 * W, y: (1 - tmp.y) / 2 * H }; }
     function layout() {
@@ -310,17 +364,18 @@
       if (!W || !H) return;
       renderer.setSize(W, H, false);
       camera.aspect = W / H;
-      visH = Math.max(2 * HALF_Y + 1.7, (2 * HALF_X * 0.94 + 1.4) / camera.aspect);
+      visH = Math.max(2 * HALF_Y + 2.8, (2 * HALF_X + 2.8) / camera.aspect);
       visW = visH * camera.aspect;
-      camera.position.set(0, 0, visH / 2 / Math.tan(D(17.5)));
+      camera.position.set(0, 0, (visH / PACK_SCALE) / 2 / Math.tan(D(17.5)));
       camera.updateProjectionMatrix();
-      baseX = visW / 2 + 0.06 * 2 * HALF_X - HALF_X; // ~6% of the pack bleeds past the right edge
-      floatAmp = 12 * visH / H;
-      pinW.set(baseX - 0.25, baseY + 3.3, 0.5);
+      baseX = 0;
+      floatAmp = 8 * visH / H;
+      pinW.set(baseX - 0.25, baseY + 2.75, 0.5);
       var p = toScreen(pinW);
       pin.style.left = p.x + 'px'; pin.style.top = p.y + 'px';
       trail.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     }
+
 
     // interaction state
     var hovered = null, selected = null, kbd = false, flight = null, ptrType = 'mouse', over = false, cursorW = null, trailToken = 0;
@@ -360,10 +415,10 @@
       tip.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
     }
     function placeSticker() {
-      sA.set(-2.75, 0.45, TOP); sB.set(-1.75, 0.45, TOP);
-      packG.localToWorld(sA); packG.localToWorld(sB);
-      var a = toScreen(sA), b = toScreen(sB), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
-      sticker.style.transform = 'translate(' + a.x.toFixed(1) + 'px,' + a.y.toFixed(1) + 'px) translate(-50%,-50%) rotate(' + (ang - 8).toFixed(1) + 'deg)';
+      sA.set(-2.65, -1.05, TOP);
+      packG.localToWorld(sA);
+      var a = toScreen(sA);
+      sticker.style.transform = 'translate(' + a.x.toFixed(1) + 'px,' + a.y.toFixed(1) + 'px) translate(-50%,-50%) rotate(-10deg)';
     }
     function setOpacity(c, o, end) {
       c.mats.forEach(function (m) { m.opacity = o; if (end) { m.transparent = false; m.needsUpdate = true; } });
@@ -401,7 +456,7 @@
       if (kbd) status.textContent = 'Delivered in condition.';
       setTimeout(function () {
         packG.add(c.group);
-        c.group.position.copy(c.home); c.group.rotation.set(0, 0, 0); c.group.scale.setScalar(1);
+        c.group.position.copy(c.home); c.group.rotation.set(0, 0, CAP_ANGLE_LOCAL); c.group.scale.setScalar(1);
         c.lift = 0; c.fade = 0;
         c.mats.forEach(function (m) { m.transparent = true; m.opacity = 0; m.needsUpdate = true; });
         c.hlMat.opacity = 0; c.group.visible = true; c.state = 'fading';
@@ -475,7 +530,7 @@
         if (c.state !== 'home' && c.state !== 'fading') return;
         c.lift += (((c === hovered && !reduce) ? 1 : 0) - c.lift) * kl;
         c.group.position.set(c.home.x, c.home.y, c.home.z + 0.6 * c.lift);
-        c.group.rotation.set(0, 0, D(15) * c.lift);
+        c.group.rotation.set(0, 0, CAP_ANGLE_LOCAL + D(15) * c.lift);
         c.group.scale.setScalar(1 + 0.08 * c.lift);
         if (c.state === 'fading') {
           c.fade = Math.min(1, c.fade + dt / 0.7);
